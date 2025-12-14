@@ -2,7 +2,7 @@
  * 用户服务
  */
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 import UserDAO from "../dao/userDAO.js";
 
 interface RegisterParams {
@@ -52,11 +52,9 @@ class UserService {
       throw Object.assign(new Error("用户名或密码错误"), { status: 401 });
     }
 
-    const token = jwt.sign(
-      { id: user.id, username: user.username },
-      process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
-    );
+    const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET!, {
+      expiresIn: "7d",
+    });
 
     return { token, user: { id: user.id, username: user.username } };
   }

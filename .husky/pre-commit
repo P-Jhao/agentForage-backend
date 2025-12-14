@@ -1,0 +1,5 @@
+# TypeScript 类型检查
+pnpm type-check
+
+# Prettier + ESLint
+pnpm lint-staged
