@@ -11,7 +11,7 @@ interface UserAttributes {
   apiQuota: number;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, "id" | "apiQuota"> {}
+type UserCreationAttributes = Optional<UserAttributes, "id" | "apiQuota">;
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   declare id: number;

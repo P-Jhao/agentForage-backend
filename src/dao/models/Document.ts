@@ -14,9 +14,15 @@ interface DocumentAttributes {
   status: "pending" | "processing" | "completed" | "failed";
 }
 
-interface DocumentCreationAttributes extends Optional<DocumentAttributes, "id" | "fileType" | "fileSize" | "chunkCount" | "status"> {}
+type DocumentCreationAttributes = Optional<
+  DocumentAttributes,
+  "id" | "fileType" | "fileSize" | "chunkCount" | "status"
+>;
 
-class Document extends Model<DocumentAttributes, DocumentCreationAttributes> implements DocumentAttributes {
+class Document
+  extends Model<DocumentAttributes, DocumentCreationAttributes>
+  implements DocumentAttributes
+{
   declare id: number;
   declare userId: number;
   declare filename: string;

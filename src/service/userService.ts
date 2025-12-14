@@ -2,7 +2,7 @@
  * 用户服务
  */
 import bcrypt from "bcryptjs";
-import jwt, { type SignOptions } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import UserDAO from "../dao/userDAO.js";
 
 interface RegisterParams {

@@ -14,7 +14,10 @@ interface AgentAttributes {
   isActive: boolean;
 }
 
-interface AgentCreationAttributes extends Optional<AgentAttributes, "id" | "description" | "systemPrompt" | "model" | "isActive"> {}
+type AgentCreationAttributes = Optional<
+  AgentAttributes,
+  "id" | "description" | "systemPrompt" | "model" | "isActive"
+>;
 
 class Agent extends Model<AgentAttributes, AgentCreationAttributes> implements AgentAttributes {
   declare id: number;

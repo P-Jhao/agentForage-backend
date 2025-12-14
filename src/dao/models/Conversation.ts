@@ -11,9 +11,12 @@ interface ConversationAttributes {
   title: string;
 }
 
-interface ConversationCreationAttributes extends Optional<ConversationAttributes, "id" | "title"> {}
+type ConversationCreationAttributes = Optional<ConversationAttributes, "id" | "title">;
 
-class Conversation extends Model<ConversationAttributes, ConversationCreationAttributes> implements ConversationAttributes {
+class Conversation
+  extends Model<ConversationAttributes, ConversationCreationAttributes>
+  implements ConversationAttributes
+{
   declare id: number;
   declare userId: number;
   declare agentId: number;

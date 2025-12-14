@@ -11,9 +11,12 @@ interface MessageAttributes {
   content: string;
 }
 
-interface MessageCreationAttributes extends Optional<MessageAttributes, "id"> {}
+type MessageCreationAttributes = Optional<MessageAttributes, "id">;
 
-class Message extends Model<MessageAttributes, MessageCreationAttributes> implements MessageAttributes {
+class Message
+  extends Model<MessageAttributes, MessageCreationAttributes>
+  implements MessageAttributes
+{
   declare id: number;
   declare conversationId: number;
   declare role: "user" | "assistant" | "system";
