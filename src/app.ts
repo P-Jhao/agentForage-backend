@@ -1,7 +1,7 @@
 import "dotenv/config";
 import Koa from "koa";
 import cors from "@koa/cors";
-import bodyParser from "koa-bodyparser";
+import { bodyParser } from "@koa/bodyparser";
 import { errorHandler } from "./middleware/errorHandler.js";
 import routes from "./routes/index.js";
 
