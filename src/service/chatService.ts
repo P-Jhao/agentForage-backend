@@ -31,11 +31,19 @@ class ChatService {
       content: message,
     });
 
-    // TODO: 调用 LLM 获取回复
+    // 获取历史消息构建上下文
+    const history = await MessageDAO.findByConversationId(convId);
+    const messages = history.map((msg) => ({
+      role: msg.role as "user" | "assistant",
+      content: msg.content,
+    }));
+    // 添加当前消息
+    messages.push({ role: "user", content: message });
+
+    // 调用 LLM 获取回复
     const aiResponse = await LLMService.chat({
-      agentId,
-      message,
-      conversationId: convId,
+      agentId: String(agentId),
+      messages,
     });
 
     // 保存 AI 回复

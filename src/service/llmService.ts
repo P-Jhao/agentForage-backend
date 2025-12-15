@@ -1,60 +1,59 @@
 /**
  * LLM Gateway 服务
- * 统一管理多模型调用
+ * 调用 agentforge-gateway 进行 LLM 交互
  */
 
-interface ChatParams {
-  agentId: number;
-  message: string;
-  conversationId: number;
-}
-
-interface LLMMessage {
+// 消息类型
+interface Message {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-interface CallLLMParams {
-  messages: LLMMessage[];
-  model?: string;
+interface ChatParams {
+  agentId: string;
+  messages: Message[];
 }
+
+// 动态导入 gateway（避免类型声明问题）
+const loadGateway = async () => {
+  return await import("agentforge-gateway");
+};
 
 class LLMService {
   /**
-   * 对话接口
+   * 同步对话（等待完整响应）
    */
-  static async chat({
-    agentId: _agentId,
-    message,
-    conversationId: _conversationId,
-  }: ChatParams): Promise<string> {
-    // TODO: 根据 Agent 配置选择模型，调用对应 API
-    // 目前返回占位响应
-    return `[LLM 响应占位] 收到消息: ${message}`;
+  static async chat({ agentId, messages }: ChatParams): Promise<string> {
+    const { chatService, isErr } = await loadGateway();
+    const result = await chatService.chat({ agentId, messages });
+
+    if (isErr(result)) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data.content;
   }
 
   /**
-   * 调用通义千问
+   * 流式对话（返回 AsyncGenerator）
    */
-  static async callQwen(_params: CallLLMParams): Promise<string> {
-    // TODO: 实现千问 API 调用
-    return "";
+  static async *stream({ agentId, messages }: ChatParams) {
+    const { chatService } = await loadGateway();
+    yield* chatService.stream({ agentId, messages });
   }
 
   /**
-   * 调用 DeepSeek
+   * 简单对话（不使用 Agent，直接调用 LLM）
    */
-  static async callDeepSeek(_params: CallLLMParams): Promise<string> {
-    // TODO: 实现 DeepSeek API 调用
-    return "";
-  }
+  static async simpleChat(messages: Message[], model?: "qwen" | "deepseek"): Promise<string> {
+    const { chatService, isErr } = await loadGateway();
+    const result = await chatService.simpleChat(messages, model);
 
-  /**
-   * 获取文本 Embedding
-   */
-  static async getEmbedding(_text: string): Promise<number[]> {
-    // TODO: 实现 Embedding 接口
-    return [];
+    if (isErr(result)) {
+      throw new Error(result.error.message);
+    }
+
+    return result.data.content;
   }
 }
 

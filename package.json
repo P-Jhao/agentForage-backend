@@ -26,6 +26,7 @@
     "@koa/bodyparser": "^5.1.0",
     "@koa/cors": "^5.0.0",
     "@koa/router": "^15.1.0",
+    "agentforge-gateway": "workspace:*",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.0",
     "jsonwebtoken": "^9.0.2",
