@@ -7,6 +7,7 @@ import Agent from "./Agent.js";
 import Conversation from "./Conversation.js";
 import Message from "./Message.js";
 import Document from "./Document.js";
+import Mcp from "./Mcp.js";
 
 // 定义模型关联
 User.hasMany(Conversation, { foreignKey: "userId", as: "conversations" });
@@ -21,4 +22,7 @@ Message.belongsTo(Conversation, { foreignKey: "conversationId", as: "conversatio
 User.hasMany(Document, { foreignKey: "userId", as: "documents" });
 Document.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-export { sequelize, User, Agent, Conversation, Message, Document };
+User.hasMany(Mcp, { foreignKey: "userId", as: "mcps" });
+Mcp.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+export { sequelize, User, Agent, Conversation, Message, Document, Mcp };

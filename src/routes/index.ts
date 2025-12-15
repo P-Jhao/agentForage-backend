@@ -6,6 +6,7 @@ import userRoutes from "./user.js";
 import agentRoutes from "./agent.js";
 import chatRoutes from "./chat.js";
 import documentRoutes from "./document.js";
+import mcpRoutes from "./mcp.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -19,5 +20,6 @@ router.use("/user", userRoutes.routes());
 router.use("/agent", agentRoutes.routes());
 router.use("/chat", chatRoutes.routes());
 router.use("/document", documentRoutes.routes());
+router.use("/mcp", mcpRoutes.routes());
 
 export default router;

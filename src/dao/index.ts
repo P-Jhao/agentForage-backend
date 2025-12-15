@@ -6,3 +6,4 @@ export { default as AgentDAO } from "./agentDAO.js";
 export { default as ConversationDAO } from "./conversationDAO.js";
 export { default as MessageDAO } from "./messageDAO.js";
 export { default as DocumentDAO } from "./documentDAO.js";
+export { default as McpDAO } from "./mcpDAO.js";
