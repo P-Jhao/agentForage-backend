@@ -26,6 +26,12 @@ class UserService {
     if (!username || !password) {
       throw Object.assign(new Error("用户名和密码不能为空"), { status: 400 });
     }
+    if (username.length < 3 || username.length > 20) {
+      throw Object.assign(new Error("用户名长度需在 3-20 字符之间"), { status: 400 });
+    }
+    if (password.length < 6 || password.length > 32) {
+      throw Object.assign(new Error("密码长度需在 6-32 字符之间"), { status: 400 });
+    }
 
     const existing = await UserDAO.findByUsername(username);
     if (existing) {
