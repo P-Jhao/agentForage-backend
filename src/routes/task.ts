@@ -5,6 +5,7 @@
 import Router from "@koa/router";
 import { tokenAuth } from "../middleware/index.js";
 import TaskService from "../service/taskService.js";
+import TaskEventService from "../service/taskEventService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import type { MessageSegment } from "../dao/models/Message.js";
 import Message from "../dao/models/Message.js";
@@ -77,6 +78,55 @@ router.get("/list", tokenAuth(), async (ctx) => {
   });
 
   ctx.body = { code: 200, message: "ok", data: tasks };
+});
+
+/**
+ * 订阅任务状态变化（SSE 长连接）
+ * GET /api/task/subscribe
+ *
+ * 前端在 Layout 初始化时建立连接，接收任务状态实时推送
+ * 注意：此路由必须在 /:id 之前定义，否则 subscribe 会被当作 id 参数
+ */
+router.get("/subscribe", tokenAuth(), async (ctx) => {
+  const userId = ctx.state.user.id as number;
+
+  // 获取原生响应对象
+  const res = ctx.res;
+
+  // 设置 SSE 响应头
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  // 发送初始连接成功消息
+  res.write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
+
+  // 添加到连接池
+  TaskEventService.addConnection(userId, res);
+
+  // 监听连接关闭
+  ctx.req.on("close", () => {
+    TaskEventService.removeConnection(userId, res);
+  });
+
+  // 保持连接，定期发送心跳
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`: heartbeat\n\n`);
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 30000); // 每 30 秒发送一次心跳
+
+  // 连接关闭时清理心跳
+  ctx.req.on("close", () => {
+    clearInterval(heartbeat);
+  });
+
+  // 告诉 Koa 不要再处理响应
+  ctx.respond = false;
 });
 
 /**

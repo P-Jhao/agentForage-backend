@@ -4,6 +4,7 @@
  */
 import TaskDAO from "../dao/taskDAO.js";
 import type { TaskStatus } from "../dao/models/Conversation.js";
+import TaskEventService from "./taskEventService.js";
 
 // 创建任务参数
 interface CreateTaskParams {
@@ -91,9 +92,22 @@ class TaskService {
 
   /**
    * 更新任务状态
+   * 同时推送状态变化事件给前端
    */
   static async updateTaskStatus(uuid: string, status: TaskStatus) {
-    return await TaskDAO.updateStatus(uuid, status);
+    const task = await TaskDAO.updateStatus(uuid, status);
+
+    // 推送状态变化事件
+    if (task) {
+      TaskEventService.pushTaskStatusChange(
+        task.userId,
+        task.uuid,
+        task.status,
+        task.updatedAt.toISOString()
+      );
+    }
+
+    return task;
   }
 
   /**
