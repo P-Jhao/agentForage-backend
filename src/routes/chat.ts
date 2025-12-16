@@ -15,8 +15,9 @@ interface SendMessageBody {
 }
 
 interface StreamBody {
-  agentId: string;
+  agentId?: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  model?: "qwen" | "deepseek";
 }
 
 const router = new Router();
@@ -30,7 +31,7 @@ function writeChunk(stream: PassThrough, chunk: StreamChunk): void {
 
 // 流式对话（NDJSON 格式）
 router.post("/stream", tokenAuth(), async (ctx) => {
-  const { agentId, messages } = ctx.request.body as StreamBody;
+  const { agentId, messages, model } = ctx.request.body as StreamBody;
 
   // 设置 NDJSON 响应头
   ctx.set({
@@ -48,9 +49,15 @@ router.post("/stream", tokenAuth(), async (ctx) => {
     writeChunk(stream, createChunk("status", { status: "running" }));
     writeChunk(stream, createChunk("chatStream", { event: "start" }));
 
-    // 流式输出
-    for await (const chunk of LLMService.stream({ agentId, messages })) {
-      writeChunk(stream, createChunk("chatStream", { event: "data", content: chunk.content }));
+    if (agentId) {
+      // 有 agentId，调用对应 Agent
+      for await (const chunk of LLMService.stream({ agentId, messages })) {
+        writeChunk(stream, createChunk("chatStream", { event: "data", content: chunk.content }));
+      }
+    } else {
+      // 无 agentId，使用简单对话（直接调用 LLM）
+      const response = await LLMService.simpleChat(messages, model);
+      writeChunk(stream, createChunk("chatStream", { event: "data", content: response }));
     }
 
     // 发送结束标记
