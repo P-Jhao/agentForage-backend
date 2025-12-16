@@ -6,6 +6,7 @@ import { PassThrough } from "stream";
 import { tokenAuth } from "../middleware/index.js";
 import ChatService from "../service/chatService.js";
 import LLMService from "../service/llmService.js";
+import { createChunk, type StreamChunk } from "../types/index.js";
 
 interface SendMessageBody {
   agentId: number;
@@ -20,13 +21,20 @@ interface StreamBody {
 
 const router = new Router();
 
-// SSE 流式对话
+/**
+ * 写入流式消息（NDJSON 格式）
+ */
+function writeChunk(stream: PassThrough, chunk: StreamChunk): void {
+  stream.write(JSON.stringify(chunk) + "\n");
+}
+
+// 流式对话（NDJSON 格式）
 router.post("/stream", tokenAuth(), async (ctx) => {
   const { agentId, messages } = ctx.request.body as StreamBody;
 
-  // 设置 SSE 响应头
+  // 设置 NDJSON 响应头
   ctx.set({
-    "Content-Type": "text/event-stream",
+    "Content-Type": "application/x-ndjson",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
@@ -36,17 +44,23 @@ router.post("/stream", tokenAuth(), async (ctx) => {
   ctx.status = 200;
 
   try {
+    // 发送开始状态
+    writeChunk(stream, createChunk("status", { status: "running" }));
+    writeChunk(stream, createChunk("chatStream", { event: "start" }));
+
     // 流式输出
     for await (const chunk of LLMService.stream({ agentId, messages })) {
-      const data = JSON.stringify({ type: "content", content: chunk.content });
-      stream.write(`data: ${data}\n\n`);
+      writeChunk(stream, createChunk("chatStream", { event: "data", content: chunk.content }));
     }
 
     // 发送结束标记
-    stream.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+    writeChunk(stream, createChunk("chatStream", { event: "end" }));
+    writeChunk(stream, createChunk("status", { status: "success" }));
+    writeChunk(stream, createChunk("done"));
   } catch (error) {
     const errMsg = (error as Error).message;
-    stream.write(`data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`);
+    writeChunk(stream, createChunk("error", { message: errMsg }));
+    writeChunk(stream, createChunk("status", { status: "failed", message: errMsg }));
   } finally {
     stream.end();
   }
