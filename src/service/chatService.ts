@@ -1,9 +1,14 @@
 /**
  * 对话服务
+ * 处理会话持久化和消息管理
  */
 import ConversationDAO from "../dao/conversationDAO.js";
 import MessageDAO from "../dao/messageDAO.js";
-import LLMService from "./llmService.js";
+
+// 动态导入 gateway
+const loadGateway = async () => {
+  return await import("agentforge-gateway");
+};
 
 interface SendMessageParams {
   userId: number;
@@ -14,7 +19,8 @@ interface SendMessageParams {
 
 class ChatService {
   /**
-   * 发送消息并获取 AI 回复
+   * 发送消息并获取 AI 回复（同步方式）
+   * 用于需要持久化会话的场景
    */
   static async sendMessage({ userId, agentId, message, conversationId }: SendMessageParams) {
     // 如果没有会话 ID，创建新会话
@@ -40,11 +46,15 @@ class ChatService {
     // 添加当前消息
     messages.push({ role: "user", content: message });
 
-    // 调用 LLM 获取回复
-    const aiResponse = await LLMService.chat({
-      agentId: String(agentId),
-      messages,
-    });
+    // 调用 gateway 获取回复（通过 LangGraph 执行）
+    const { chatService, isErr } = await loadGateway();
+    const result = await chatService.chat({ messages });
+
+    if (isErr(result)) {
+      throw new Error(result.error.message);
+    }
+
+    const aiResponse = result.data.content;
 
     // 保存 AI 回复
     await MessageDAO.create({

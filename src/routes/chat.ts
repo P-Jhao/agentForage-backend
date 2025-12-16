@@ -5,8 +5,12 @@ import Router from "@koa/router";
 import { PassThrough } from "stream";
 import { tokenAuth } from "../middleware/index.js";
 import ChatService from "../service/chatService.js";
-import LLMService from "../service/llmService.js";
 import { createChunk, type StreamChunk } from "../types/index.js";
+
+// 动态导入 gateway
+const loadGateway = async () => {
+  return await import("agentforge-gateway");
+};
 
 interface SendMessageBody {
   agentId: number;
@@ -15,8 +19,8 @@ interface SendMessageBody {
 }
 
 interface StreamBody {
-  agentId?: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  // 模型选择（可选，默认千问）
   model?: "qwen" | "deepseek";
 }
 
@@ -30,8 +34,9 @@ function writeChunk(stream: PassThrough, chunk: StreamChunk): void {
 }
 
 // 流式对话（NDJSON 格式）
+// 通过 LangChain 调用 LLM
 router.post("/stream", tokenAuth(), async (ctx) => {
-  const { agentId, messages, model } = ctx.request.body as StreamBody;
+  const { messages, model } = ctx.request.body as StreamBody;
 
   // 设置 NDJSON 响应头
   ctx.set({
@@ -45,19 +50,15 @@ router.post("/stream", tokenAuth(), async (ctx) => {
   ctx.status = 200;
 
   try {
+    const { chatService } = await loadGateway();
+
     // 发送开始状态
     writeChunk(stream, createChunk("status", { status: "running" }));
     writeChunk(stream, createChunk("chatStream", { event: "start" }));
 
-    if (agentId) {
-      // 有 agentId，调用对应 Agent
-      for await (const chunk of LLMService.stream({ agentId, messages })) {
-        writeChunk(stream, createChunk("chatStream", { event: "data", content: chunk.content }));
-      }
-    } else {
-      // 无 agentId，使用简单对话（直接调用 LLM）
-      const response = await LLMService.simpleChat(messages, model);
-      writeChunk(stream, createChunk("chatStream", { event: "data", content: response }));
+    // 通过 chatService.stream 执行，支持选择模型
+    for await (const chunk of chatService.stream({ messages, model })) {
+      writeChunk(stream, createChunk("chatStream", { event: "data", content: chunk.content }));
     }
 
     // 发送结束标记
