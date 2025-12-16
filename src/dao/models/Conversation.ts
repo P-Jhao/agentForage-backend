@@ -12,7 +12,7 @@ interface ConversationAttributes {
   id: number;
   uuid: string;
   userId: number;
-  agentId: number;
+  agentId: number | null;
   title: string;
   favorite: boolean;
   status: TaskStatus;
@@ -30,7 +30,7 @@ class Conversation
   declare id: number;
   declare uuid: string;
   declare userId: number;
-  declare agentId: number;
+  declare agentId: number | null;
   declare title: string;
   declare favorite: boolean;
   declare status: TaskStatus;
@@ -59,8 +59,8 @@ Conversation.init(
     agentId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0,
-      comment: "Agent ID，0 表示无特定 Agent",
+      defaultValue: null,
+      comment: "Agent ID，null 表示无特定 Agent",
     },
     title: {
       type: DataTypes.STRING(200),
