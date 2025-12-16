@@ -4,8 +4,9 @@
 import { Conversation } from "./models/index.js";
 
 interface CreateConversationData {
+  uuid: string;
   userId: number;
-  agentId: number;
+  agentId?: number;
   title?: string;
 }
 

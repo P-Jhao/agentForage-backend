@@ -2,6 +2,7 @@
  * 对话服务
  * 处理会话持久化和消息管理
  */
+import { randomUUID } from "crypto";
 import ConversationDAO from "../dao/conversationDAO.js";
 import MessageDAO from "../dao/messageDAO.js";
 
@@ -26,7 +27,7 @@ class ChatService {
     // 如果没有会话 ID，创建新会话
     let convId = conversationId;
     if (!convId) {
-      const conversation = await ConversationDAO.create({ userId, agentId });
+      const conversation = await ConversationDAO.create({ uuid: randomUUID(), userId, agentId });
       convId = conversation.id;
     }
 
