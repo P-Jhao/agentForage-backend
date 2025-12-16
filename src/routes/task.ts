@@ -6,6 +6,7 @@ import Router from "@koa/router";
 import { tokenAuth } from "../middleware/index.js";
 import TaskService from "../service/taskService.js";
 import TaskEventService from "../service/taskEventService.js";
+import TaskStreamService from "../service/taskStreamService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import type { MessageSegment } from "../dao/models/Message.js";
 import Message from "../dao/models/Message.js";
@@ -261,6 +262,9 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
     res.write(JSON.stringify(chunk) + "\n");
   };
 
+  // 标记是否由 TaskStreamService 管理连接（不需要手动关闭）
+  let managedByStreamService = false;
+
   try {
     if (loadHistory) {
       // 加载历史消息
@@ -277,10 +281,24 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 发送历史消息
       write({ type: "history", data: formattedMessages });
 
-      // 根据任务状态决定是否补发 done
-      if (task.status !== "running") {
-        write({ type: "done" });
+      // 检查任务是否正在运行，如果是则订阅流
+      if (task.status === "running" && TaskStreamService.isRunning(uuid)) {
+        // 订阅正在进行的流，接收后续输出
+        const subscribed = TaskStreamService.subscribe(uuid, res);
+        if (subscribed) {
+          // 成功订阅，监听连接关闭
+          ctx.req.on("close", () => {
+            TaskStreamService.unsubscribe(uuid, res);
+          });
+          // 连接由 TaskStreamService 管理
+          managedByStreamService = true;
+          ctx.respond = false;
+          return;
+        }
       }
+
+      // 任务不在运行或订阅失败，发送 done
+      write({ type: "done" });
     } else {
       // 发送新消息
       if (!content || typeof content !== "string") {
@@ -295,6 +313,20 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 更新任务状态为 running
       await TaskService.updateTaskStatus(uuid, "running");
+
+      // 开始任务流（支持多订阅者）
+      TaskStreamService.startStream(uuid);
+
+      // 将当前连接添加为订阅者
+      TaskStreamService.subscribe(uuid, res);
+
+      // 连接由 TaskStreamService 管理
+      managedByStreamService = true;
+
+      // 监听连接关闭
+      ctx.req.on("close", () => {
+        TaskStreamService.unsubscribe(uuid, res);
+      });
 
       // 获取历史消息构建上下文
       const history = await MessageDAO.findByConversationId(task.id);
@@ -329,8 +361,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           currentSegment.content += chunk.content;
         }
 
-        // 流式返回给前端
-        write({ type: chunkType, data: chunk.content });
+        // 通过 TaskStreamService 写入（会同时写入缓冲区和所有订阅者）
+        TaskStreamService.write(uuid, { type: chunkType, data: chunk.content });
       }
 
       // 保存最后一个段落
@@ -349,14 +381,26 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 更新任务状态为 completed
       await TaskService.updateTaskStatus(uuid, "completed");
 
-      // 发送结束标记
-      write({ type: "done" });
+      // 发送结束标记并结束流（会关闭所有订阅者连接）
+      TaskStreamService.write(uuid, { type: "done" });
+      TaskStreamService.endStream(uuid);
+
+      ctx.respond = false;
+      return;
     }
   } catch (error) {
     const errMsg = (error as Error).message;
     write({ type: "error", data: { message: errMsg } });
+    // 如果流存在，也写入错误
+    if (TaskStreamService.isRunning(uuid)) {
+      TaskStreamService.write(uuid, { type: "error", data: { message: errMsg } });
+      TaskStreamService.endStream(uuid);
+    }
   } finally {
-    res.end();
+    // 只有不由 TaskStreamService 管理的连接才需要手动关闭
+    if (!managedByStreamService) {
+      res.end();
+    }
   }
 
   // 告诉 Koa 不要再处理响应
