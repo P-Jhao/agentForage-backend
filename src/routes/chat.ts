@@ -2,7 +2,6 @@
  * 对话相关路由
  */
 import Router from "@koa/router";
-import { PassThrough } from "stream";
 import { tokenAuth } from "../middleware/index.js";
 import ChatService from "../service/chatService.js";
 import { createChunk, type StreamChunk } from "../types/index.js";
@@ -26,52 +25,52 @@ interface StreamBody {
 
 const router = new Router();
 
-/**
- * 写入流式消息（NDJSON 格式）
- */
-function writeChunk(stream: PassThrough, chunk: StreamChunk): void {
-  stream.write(JSON.stringify(chunk) + "\n");
-}
-
 // 流式对话（NDJSON 格式）
-// 通过 LangChain 调用 LLM
+// 使用原生响应对象绕过 Koa 缓冲，实现真正的流式响应
 router.post("/stream", tokenAuth(), async (ctx) => {
   const { messages, model } = ctx.request.body as StreamBody;
 
-  // 设置 NDJSON 响应头
-  ctx.set({
+  // 获取原生响应对象，绕过 Koa 的响应缓冲
+  const res = ctx.res;
+
+  // 设置响应头
+  res.writeHead(200, {
     "Content-Type": "application/x-ndjson",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
 
-  const stream = new PassThrough();
-  ctx.body = stream;
-  ctx.status = 200;
+  // 写入 NDJSON 格式数据
+  const write = (chunk: StreamChunk) => {
+    res.write(JSON.stringify(chunk) + "\n");
+  };
 
   try {
     const { chatService } = await loadGateway();
 
     // 发送开始状态
-    writeChunk(stream, createChunk("status", { status: "running" }));
-    writeChunk(stream, createChunk("chatStream", { event: "start" }));
+    write(createChunk("status", { status: "running" }));
+    write(createChunk("chatStream", { event: "start" }));
 
     // 通过 chatService.stream 执行，支持选择模型
     for await (const chunk of chatService.stream({ messages, model })) {
-      writeChunk(stream, createChunk("chatStream", { event: "data", content: chunk.content }));
+      write(createChunk("chatStream", { event: "data", content: chunk.content }));
     }
 
     // 发送结束标记
-    writeChunk(stream, createChunk("chatStream", { event: "end" }));
-    writeChunk(stream, createChunk("status", { status: "success" }));
-    writeChunk(stream, createChunk("done"));
+    write(createChunk("chatStream", { event: "end" }));
+    write(createChunk("status", { status: "success" }));
+    write(createChunk("done"));
   } catch (error) {
     const errMsg = (error as Error).message;
-    writeChunk(stream, createChunk("error", { message: errMsg }));
-    writeChunk(stream, createChunk("status", { status: "failed", message: errMsg }));
+    write(createChunk("error", { message: errMsg }));
+    write(createChunk("status", { status: "failed", message: errMsg }));
   } finally {
-    stream.end();
+    res.end();
   }
+
+  // 告诉 Koa 不要再处理响应
+  ctx.respond = false;
 });
 
 // 发送消息（调用 Agent）
