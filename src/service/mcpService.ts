@@ -6,8 +6,9 @@ import McpDAO from "../dao/mcpDAO.js";
 import McpForgeDAO from "../dao/mcpForgeDAO.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
 import type { CreateMcpData, UpdateMcpData } from "../dao/mcpDAO.js";
+import { mcpManager, type MCPTool } from "../mcp/index.js";
 
-// MCP 工具接口（暂时使用 mock 数据）
+// MCP 工具接口
 interface McpTool {
   name: string;
   description: string;
@@ -126,8 +127,30 @@ class McpService {
       };
     });
 
-    // 获取工具列表（暂时返回 mock 数据）
-    const tools = this.getMockTools(mcp.name);
+    // 获取工具列表
+    // 只有当 MCP 状态为 connected 时才尝试获取真实工具列表
+    let tools: McpTool[] = [];
+    console.log(`[getMCPDetail] MCP ${id} 状态: ${mcp.status}`);
+    if (mcp.status === "connected") {
+      try {
+        console.log(`[getMCPDetail] 开始获取 MCP ${id} 工具列表...`);
+        const mcpTools = await mcpManager.getTools(id);
+        console.log(`[getMCPDetail] 获取到 ${mcpTools.length} 个工具`);
+        tools = mcpTools.map((t: MCPTool) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema as Record<string, unknown> | undefined,
+        }));
+      } catch (error) {
+        console.error(`获取 MCP ${id} 工具列表失败:`, (error as Error).message);
+        // 连接失败时更新状态为 disconnected
+        await McpDAO.updateStatus(id, "disconnected");
+        // 返回空工具列表
+        tools = [];
+      }
+    } else {
+      console.log(`[getMCPDetail] MCP ${id} 状态不是 connected，跳过获取工具列表`);
+    }
 
     const mcpData = mcp.toJSON();
     return {
@@ -149,34 +172,6 @@ class McpService {
       associatedForges,
       tools,
     };
-  }
-
-  /**
-   * 获取 mock 工具列表
-   * TODO: 后续实现真实的工具列表获取
-   */
-  private static getMockTools(mcpName: string): McpTool[] {
-    // 根据 MCP 名称返回不同的 mock 工具
-    if (mcpName.includes("文件")) {
-      return [
-        { name: "read_file", description: "读取文件内容" },
-        { name: "write_file", description: "写入文件内容" },
-        { name: "list_directory", description: "列出目录内容" },
-      ];
-    }
-    if (mcpName.includes("搜索")) {
-      return [
-        { name: "web_search", description: "网页搜索" },
-        { name: "image_search", description: "图片搜索" },
-      ];
-    }
-    if (mcpName.includes("数据库")) {
-      return [
-        { name: "query", description: "执行 SQL 查询" },
-        { name: "execute", description: "执行 SQL 语句" },
-      ];
-    }
-    return [{ name: "default_tool", description: "默认工具" }];
   }
 
   /**
@@ -216,7 +211,13 @@ class McpService {
       throw Object.assign(new Error("MCP 不存在"), { status: 404 });
     }
 
-    // TODO: 实际断开连接的逻辑
+    // 断开 MCP 连接
+    try {
+      await mcpManager.disconnect(id);
+    } catch (error) {
+      console.error(`断开 MCP ${id} 连接时出错:`, (error as Error).message);
+      // 即使断开失败也继续更新状态
+    }
 
     // 更新状态为 closed（管理员主动关闭）
     await McpDAO.updateStatus(id, "closed");
@@ -236,13 +237,28 @@ class McpService {
       throw Object.assign(new Error("MCP 不存在"), { status: 404 });
     }
 
-    // TODO: 实际重连的逻辑，这里暂时模拟成功
-    // 实际实现时需要根据 transportType 和 connectionUrl 进行连接测试
+    try {
+      // 先断开现有连接（如果有）
+      await mcpManager.disconnect(id);
 
-    // 模拟连接成功，更新状态
-    await McpDAO.updateStatus(id, "connected");
+      // 尝试重新连接
+      const success = await mcpManager.connect(id);
 
-    return { status: "connected" as const };
+      if (success) {
+        // 连接成功，更新状态
+        await McpDAO.updateStatus(id, "connected");
+        return { status: "connected" as const };
+      } else {
+        // 连接失败，更新状态
+        await McpDAO.updateStatus(id, "disconnected");
+        return { status: "disconnected" as const };
+      }
+    } catch (error) {
+      console.error(`MCP ${id} 重连失败:`, (error as Error).message);
+      // 连接失败，更新状态
+      await McpDAO.updateStatus(id, "disconnected");
+      throw Object.assign(new Error(`MCP 连接失败: ${(error as Error).message}`), { status: 500 });
+    }
   }
 
   /**

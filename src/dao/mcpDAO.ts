@@ -89,6 +89,17 @@ class McpDAO {
     const [affectedCount] = await Mcp.update({ status }, { where: { id } });
     return affectedCount > 0;
   }
+
+  /**
+   * 根据状态查询 MCP 列表
+   * @param status 连接状态
+   */
+  static async findByStatus(status: McpStatus) {
+    return await Mcp.findAll({
+      where: { status },
+      order: [["createdAt", "ASC"]],
+    });
+  }
 }
 
 export default McpDAO;
