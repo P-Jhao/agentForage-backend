@@ -12,7 +12,10 @@ export type McpTransportType = "stdio" | "sse" | "streamableHttp";
 export type McpSource = "builtin";
 
 // MCP 连接状态
-export type McpStatus = "connected" | "disconnected";
+// connected: 连通成功
+// disconnected: 连通失败（可重连）
+// closed: 管理员主动关闭（普通用户不可见）
+export type McpStatus = "connected" | "disconnected" | "closed";
 
 // MCP 属性接口
 export interface McpAttributes {
@@ -131,10 +134,10 @@ Mcp.init(
       comment: "MCP 示例（使用说明）",
     },
     status: {
-      type: DataTypes.ENUM("connected", "disconnected"),
+      type: DataTypes.ENUM("connected", "disconnected", "closed"),
       allowNull: false,
       defaultValue: "disconnected",
-      comment: "连接状态：connected / disconnected",
+      comment: "连接状态：connected（连通成功）/ disconnected（连通失败）/ closed（管理员关闭）",
     },
   },
   {

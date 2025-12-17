@@ -77,10 +77,12 @@ router.post("/", tokenAuth(), async (ctx) => {
 /**
  * 获取 MCP 列表
  * GET /api/mcp/list?keyword=xxx
+ * 普通用户只能看到非 closed 状态的 MCP
  */
-router.get("/list", async (ctx) => {
+router.get("/list", tokenAuth(), async (ctx) => {
   const { keyword } = ctx.query as { keyword?: string };
-  const list = await McpService.getMCPList(keyword);
+  const user = ctx.state.user as JwtPayload;
+  const list = await McpService.getMCPList(keyword, user);
   ctx.body = { code: 200, message: "ok", data: list };
 });
 

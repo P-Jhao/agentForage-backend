@@ -36,9 +36,15 @@ class McpDAO {
   /**
    * 查询所有 MCP 列表
    * @param keyword 搜索关键词（可选）
+   * @param isAdmin 是否为管理员（普通用户过滤掉 closed 状态的 MCP）
    */
-  static async findAll(keyword?: string) {
+  static async findAll(keyword?: string, isAdmin: boolean = false) {
     const where: Record<string, unknown> = {};
+
+    // 普通用户过滤掉 closed 状态的 MCP
+    if (!isAdmin) {
+      where.status = { [Op.ne]: "closed" };
+    }
 
     if (keyword) {
       where[Op.or as unknown as string] = [

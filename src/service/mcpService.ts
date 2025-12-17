@@ -72,9 +72,11 @@ class McpService {
   /**
    * 获取 MCP 列表
    * @param keyword 搜索关键词（可选）
+   * @param user 当前用户（用于判断是否为管理员）
    */
-  static async getMCPList(keyword?: string) {
-    return McpDAO.findAll(keyword);
+  static async getMCPList(keyword?: string, user?: JwtPayload) {
+    const isAdmin = user?.role === "root";
+    return McpDAO.findAll(keyword, isAdmin);
   }
 
   /**
@@ -190,7 +192,7 @@ class McpService {
 
   /**
    * 关闭 MCP（仅管理员）
-   * 断开与 MCP 服务的连接，更新状态为 disconnected
+   * 断开与 MCP 服务的连接，更新状态为 closed
    * @param id MCP ID
    * @param user 当前用户
    */
@@ -206,8 +208,8 @@ class McpService {
 
     // TODO: 实际断开连接的逻辑
 
-    // 更新状态为 disconnected
-    await McpDAO.updateStatus(id, "disconnected");
+    // 更新状态为 closed（管理员主动关闭）
+    await McpDAO.updateStatus(id, "closed");
 
     return { success: true };
   }
