@@ -4,3 +4,6 @@ node_modules/
 .DS_Store
 .kiro/
 dist/
+
+# 用户上传的文件（运行时生成）
+public/uploads/

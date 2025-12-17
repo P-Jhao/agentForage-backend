@@ -68,16 +68,32 @@ class ForgeService {
     };
   }
 
+  // 默认头像数量
+  static DEFAULT_AVATAR_COUNT = 7;
+
+  /**
+   * 获取随机默认头像 URL
+   */
+  static getRandomDefaultAvatar(): string {
+    const index = Math.floor(Math.random() * this.DEFAULT_AVATAR_COUNT) + 1;
+    return `/api/defaultImgs/default-${index}.png`;
+  }
+
   /**
    * 创建 Forge
    * root 用户创建的为内置 Forge
+   * 如果没有头像，随机分配一个默认头像
    */
   static async createForge(params: CreateForgeParams, user: JwtPayload) {
     // 根据用户角色决定 source
     const source = user.role === "root" ? "builtin" : "user";
 
+    // 如果没有头像，随机分配默认头像
+    const avatar = params.avatar || this.getRandomDefaultAvatar();
+
     const forge = await ForgeDAO.create({
       ...params,
+      avatar,
       userId: user.id,
       source,
     });

@@ -2,10 +2,17 @@ import "dotenv/config";
 import Koa from "koa";
 import cors from "@koa/cors";
 import { bodyParser } from "@koa/bodyparser";
+import serve from "koa-static";
+import mount from "koa-mount";
+import path from "path";
+import { fileURLToPath } from "url";
 import { errorHandler } from "./middleware/errorHandler.js";
 import routes from "./routes/index.js";
 import { sequelize, initSuperAdmin } from "./config/database.js";
 import "./dao/models/index.js"; // 确保模型被加载
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = new Koa();
 
@@ -13,6 +20,12 @@ const app = new Koa();
 app.use(cors());
 app.use(bodyParser());
 app.use(errorHandler());
+
+// 静态文件服务（挂载到 /api 前缀下，与 API 共用代理）
+// /api/uploads -> public/uploads（用户上传的文件）
+app.use(mount("/api/uploads", serve(path.join(__dirname, "../public/uploads"))));
+// /api/defaultImgs -> public/defaultImgs（默认头像等静态资源）
+app.use(mount("/api/defaultImgs", serve(path.join(__dirname, "../public/defaultImgs"))));
 
 // 路由挂载
 app.use(routes.routes());
