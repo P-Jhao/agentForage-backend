@@ -5,7 +5,7 @@ import { Op } from "sequelize";
 import { Agent, User, ForgeFavorite } from "./models/index.js";
 
 // Forge 筛选类型
-type ForgeFilter = "all" | "my" | "builtin";
+type ForgeFilter = "all" | "my" | "builtin" | "other";
 
 // 创建 Forge 参数
 interface CreateForgeParams {
@@ -54,6 +54,13 @@ class ForgeDAO {
       case "builtin":
         // 内置 Forge
         where.source = "builtin";
+        break;
+      case "other":
+        // 其他用户创建的公开 Forge（非内置、非自己的）
+        if (!userId) throw new Error("userId is required for 'other' filter");
+        where.isPublic = true;
+        where.source = "user";
+        where.userId = { [Op.ne]: userId };
         break;
     }
 

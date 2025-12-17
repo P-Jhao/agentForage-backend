@@ -20,7 +20,7 @@ router.get("/list", tokenAuth(), async (ctx) => {
   const filter = (ctx.query.filter as ForgeFilter) || "all";
 
   // 验证 filter 参数
-  if (!["all", "my", "builtin"].includes(filter)) {
+  if (!["all", "my", "builtin", "other"].includes(filter)) {
     ctx.body = { code: 400, message: "无效的筛选参数", data: null };
     return;
   }
