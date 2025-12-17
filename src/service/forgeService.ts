@@ -5,6 +5,7 @@
 import { randomUUID } from "crypto";
 import ForgeDAO from "../dao/forgeDAO.js";
 import ForgeFavoriteDAO from "../dao/forgeFavoriteDAO.js";
+import McpForgeDAO from "../dao/mcpForgeDAO.js";
 import TaskService from "./taskService.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
 
@@ -18,6 +19,7 @@ interface CreateForgeParams {
   systemPrompt?: string;
   avatar?: string;
   isPublic?: boolean;
+  mcpIds?: number[];
 }
 
 // 更新 Forge 参数
@@ -27,6 +29,7 @@ interface UpdateForgeParams {
   systemPrompt?: string;
   avatar?: string;
   isPublic?: boolean;
+  mcpIds?: number[];
 }
 
 class ForgeService {
@@ -46,7 +49,7 @@ class ForgeService {
 
   /**
    * 获取 Forge 详情
-   * 返回额外的权限信息：isOwner, canEdit
+   * 返回额外的权限信息：isOwner, canEdit，以及关联的 MCP 列表
    */
   static async getForgeById(id: number, user?: JwtPayload) {
     const forge = await ForgeDAO.findById(id, user?.id);
@@ -61,10 +64,15 @@ class ForgeService {
     // root 用户可以编辑所有，普通用户只能编辑自己创建的非内置 Forge
     const canEdit = isRoot || (isOwner && forge.source === "user");
 
+    // 获取关联的 MCP ID 列表
+    const mcpAssociations = await McpForgeDAO.findByForgeId(id);
+    const mcpIds = mcpAssociations.map((a) => a.mcpId);
+
     return {
       ...forge,
       isOwner,
       canEdit,
+      mcpIds,
     };
   }
 
@@ -91,12 +99,20 @@ class ForgeService {
     // 如果没有头像，随机分配默认头像
     const avatar = params.avatar || this.getRandomDefaultAvatar();
 
+    // 提取 mcpIds，不传给 ForgeDAO
+    const { mcpIds, ...forgeParams } = params;
+
     const forge = await ForgeDAO.create({
-      ...params,
+      ...forgeParams,
       avatar,
       userId: user.id,
       source,
     });
+
+    // 创建 MCP 关联
+    if (mcpIds && mcpIds.length > 0) {
+      await McpForgeDAO.bulkCreate(mcpIds, forge.id);
+    }
 
     return { id: forge.id };
   }
@@ -121,7 +137,17 @@ class ForgeService {
       throw Object.assign(new Error("无权限编辑此 Forge"), { status: 403 });
     }
 
-    await ForgeDAO.update(id, params);
+    // 提取 mcpIds，不传给 ForgeDAO
+    const { mcpIds, ...forgeParams } = params;
+
+    // 更新 Forge 基本信息
+    await ForgeDAO.update(id, forgeParams);
+
+    // 更新 MCP 关联（如果传了 mcpIds）
+    if (mcpIds !== undefined) {
+      await McpForgeDAO.updateForgeAssociations(id, mcpIds);
+    }
+
     return { success: true };
   }
 

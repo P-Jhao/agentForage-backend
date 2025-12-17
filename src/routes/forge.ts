@@ -68,6 +68,7 @@ router.post("/", tokenAuth(), async (ctx) => {
     systemPrompt?: string;
     avatar?: string;
     isPublic?: boolean;
+    mcpIds?: number[];
   };
 
   // 参数验证
@@ -83,6 +84,7 @@ router.post("/", tokenAuth(), async (ctx) => {
       systemPrompt: body.systemPrompt,
       avatar: body.avatar,
       isPublic: body.isPublic,
+      mcpIds: body.mcpIds,
     },
     user
   );
@@ -109,6 +111,7 @@ router.put("/:id", tokenAuth(), async (ctx) => {
     systemPrompt?: string;
     avatar?: string;
     isPublic?: boolean;
+    mcpIds?: number[];
   };
 
   const result = await ForgeService.updateForge(id, body, user);
