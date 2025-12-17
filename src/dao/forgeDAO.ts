@@ -39,8 +39,12 @@ class ForgeDAO {
 
     switch (filter) {
       case "all":
-        // 所有公开的 Forge
-        where.isPublic = true;
+        // 所有公开的 Forge + 自己创建的非公开 Forge
+        if (userId) {
+          where[Op.or as unknown as string] = [{ isPublic: true }, { userId }];
+        } else {
+          where.isPublic = true;
+        }
         break;
       case "my":
         // 当前用户创建的 Forge
@@ -48,8 +52,13 @@ class ForgeDAO {
         where.userId = userId;
         break;
       case "builtin":
-        // 内置 Forge
+        // 内置 Forge（公开的 + 自己创建的）
         where.source = "builtin";
+        if (userId) {
+          where[Op.or as unknown as string] = [{ isPublic: true }, { userId }];
+        } else {
+          where.isPublic = true;
+        }
         break;
       case "other":
         // 其他用户创建的公开 Forge（非内置、非自己的）
