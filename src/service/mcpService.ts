@@ -107,12 +107,22 @@ class McpService {
     const associatedForges = associations.map((a) => {
       // 使用 unknown 中转，因为 Sequelize 的关联类型不完整
       const record = a as unknown as {
-        forge: { id: number; displayName: string; avatar: string | null };
+        forge: {
+          id: number;
+          displayName: string;
+          avatar: string | null;
+          description: string | null;
+          source: string;
+          usageCount: number;
+        };
       };
       return {
         id: record.forge.id,
         displayName: record.forge.displayName,
         avatar: record.forge.avatar,
+        description: record.forge.description,
+        source: record.forge.source,
+        usageCount: record.forge.usageCount,
       };
     });
 
