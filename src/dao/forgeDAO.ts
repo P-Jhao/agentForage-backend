@@ -72,7 +72,7 @@ class ForgeDAO {
       order: [["usageCount", "DESC"]],
     });
 
-    // 如果有 userId，查询收藏状态
+    // 如果有 userId，查询收藏状态并添加 isOwner 字段
     if (userId) {
       const favoriteForgeIds = await ForgeFavorite.findAll({
         where: { userId },
@@ -82,12 +82,14 @@ class ForgeDAO {
       return forges.map((forge) => ({
         ...forge.toJSON(),
         isFavorite: favoriteForgeIds.includes(forge.id),
+        isOwner: forge.userId === userId,
       }));
     }
 
     return forges.map((forge) => ({
       ...forge.toJSON(),
       isFavorite: false,
+      isOwner: false,
     }));
   }
 
