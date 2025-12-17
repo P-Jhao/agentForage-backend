@@ -15,6 +15,7 @@ interface LoginResult {
   user: {
     id: number;
     username: string;
+    role: "user" | "root";
   };
 }
 
@@ -58,11 +59,13 @@ class UserService {
       throw Object.assign(new Error("用户名或密码错误"), { status: 401 });
     }
 
-    const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET!, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      process.env.JWT_SECRET!,
+      { expiresIn: "7d" }
+    );
 
-    return { token, user: { id: user.id, username: user.username } };
+    return { token, user: { id: user.id, username: user.username, role: user.role } };
   }
 
   /**

@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 export interface JwtPayload {
   id: number;
   username: string;
+  role: "user" | "root"; // 用户角色
 }
 
 export const tokenAuth = () => {
