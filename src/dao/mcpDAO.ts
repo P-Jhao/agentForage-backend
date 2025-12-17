@@ -3,69 +3,85 @@
  */
 import { Op } from "sequelize";
 import { Mcp } from "./models/index.js";
-import type { McpSource, McpStatus } from "./models/Mcp.js";
+import type { McpStatus, McpCreationAttributes } from "./models/Mcp.js";
 
-interface CreateMcpData {
-  name: string;
-  description: string;
-  author: string;
-  source: McpSource;
-  tools: string[];
-  userId: number;
-}
+// 创建 MCP 的参数类型
+export type CreateMcpData = Omit<McpCreationAttributes, "source" | "isPublic" | "status">;
 
-interface QueryMcpParams {
-  source?: McpSource;
-  userId?: number;
-  keyword?: string;
-}
+// 更新 MCP 的参数类型
+export type UpdateMcpData = Partial<Omit<McpCreationAttributes, "userId" | "source" | "isPublic">>;
 
 class McpDAO {
-  // 创建 MCP
+  /**
+   * 创建 MCP
+   * @param data MCP 数据
+   */
   static async create(data: CreateMcpData) {
-    return await Mcp.create(data);
+    return await Mcp.create({
+      ...data,
+      source: "builtin",
+      isPublic: true,
+      status: "disconnected",
+    });
   }
 
-  // 根据 ID 查询
+  /**
+   * 根据 ID 查询 MCP
+   * @param id MCP ID
+   */
   static async findById(id: number) {
     return await Mcp.findByPk(id);
   }
 
-  // 查询广场 MCP（官方 + 社区）
-  static async findPlazaList(params?: { keyword?: string; source?: McpSource }) {
-    const where: Record<string, unknown> = {
-      source: { [Op.in]: ["official", "community"] },
-    };
+  /**
+   * 查询所有 MCP 列表
+   * @param keyword 搜索关键词（可选）
+   */
+  static async findAll(keyword?: string) {
+    const where: Record<string, unknown> = {};
 
-    if (params?.source) {
-      where.source = params.source;
-    }
-    if (params?.keyword) {
+    if (keyword) {
       where[Op.or as unknown as string] = [
-        { name: { [Op.like]: `%${params.keyword}%` } },
-        { author: { [Op.like]: `%${params.keyword}%` } },
-        { description: { [Op.like]: `%${params.keyword}%` } },
+        { name: { [Op.like]: `%${keyword}%` } },
+        { description: { [Op.like]: `%${keyword}%` } },
       ];
     }
-    return await Mcp.findAll({ where, order: [["updatedAt", "DESC"]] });
-  }
 
-  // 查询用户自定义 MCP
-  static async findByUserId(userId: number) {
     return await Mcp.findAll({
-      where: { userId, source: "custom" },
-      order: [["updatedAt", "DESC"]],
+      where,
+      order: [["createdAt", "DESC"]],
     });
   }
 
-  // 更新 MCP
-  static async updateById(id: number, data: Partial<CreateMcpData & { status: McpStatus }>) {
-    return await Mcp.update(data, { where: { id } });
+  /**
+   * 更新 MCP
+   * @param id MCP ID
+   * @param data 更新数据
+   */
+  static async update(id: number, data: UpdateMcpData) {
+    const [affectedCount] = await Mcp.update(data, { where: { id } });
+    if (affectedCount === 0) {
+      return null;
+    }
+    return await Mcp.findByPk(id);
   }
 
-  // 删除 MCP
-  static async deleteById(id: number) {
+  /**
+   * 删除 MCP
+   * @param id MCP ID
+   */
+  static async delete(id: number) {
     return await Mcp.destroy({ where: { id } });
+  }
+
+  /**
+   * 更新 MCP 连接状态
+   * @param id MCP ID
+   * @param status 连接状态
+   */
+  static async updateStatus(id: number, status: McpStatus) {
+    const [affectedCount] = await Mcp.update({ status }, { where: { id } });
+    return affectedCount > 0;
   }
 }
 

@@ -1,37 +1,66 @@
 /**
  * MCP 模型
+ * MCP（Model Context Protocol）用于集成 LLM 工具
  */
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../../config/database.js";
 
-// MCP 来源类型
-export type McpSource = "official" | "community" | "custom";
+// MCP 传输方式类型
+export type McpTransportType = "stdio" | "sse" | "streamableHttp";
 
-// MCP 状态
-export type McpStatus = "online" | "offline";
+// MCP 来源类型（固定为 builtin）
+export type McpSource = "builtin";
 
-interface McpAttributes {
+// MCP 连接状态
+export type McpStatus = "connected" | "disconnected";
+
+// MCP 属性接口
+export interface McpAttributes {
   id: number;
-  name: string;
-  description: string;
-  author: string;
-  source: McpSource;
-  status: McpStatus;
-  tools: string[];
-  userId: number; // 所属用户ID，官方为 -1
+  name: string; // MCP 名称（必选）
+  description: string | null; // MCP 描述（可选）
+  transportType: McpTransportType; // 传输方式（必选）
+  connectionUrl: string; // 连接地址（必选）
+  userId: number; // 创建者 ID
+  source: McpSource; // 来源（固定为 builtin）
+  isPublic: boolean; // 是否公开（固定为 true）
+  timeout: number | null; // 超时时间（秒，可选）
+  headers: string | null; // 请求头（JSON 字符串，可选）
+  remarks: string | null; // 备注（可选）
+  example: string | null; // MCP 示例（可选）
+  status: McpStatus; // 连接状态
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-type McpCreationAttributes = Optional<McpAttributes, "id" | "status">;
+// MCP 创建属性（id、status、source、isPublic 等有默认值）
+export type McpCreationAttributes = Optional<
+  McpAttributes,
+  | "id"
+  | "status"
+  | "source"
+  | "isPublic"
+  | "description"
+  | "timeout"
+  | "headers"
+  | "remarks"
+  | "example"
+>;
 
 class Mcp extends Model<McpAttributes, McpCreationAttributes> implements McpAttributes {
   declare id: number;
   declare name: string;
-  declare description: string;
-  declare author: string;
-  declare source: McpSource;
-  declare status: McpStatus;
-  declare tools: string[];
+  declare description: string | null;
+  declare transportType: McpTransportType;
+  declare connectionUrl: string;
   declare userId: number;
+  declare source: McpSource;
+  declare isPublic: boolean;
+  declare timeout: number | null;
+  declare headers: string | null;
+  declare remarks: string | null;
+  declare example: string | null;
+  declare status: McpStatus;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -53,31 +82,59 @@ Mcp.init(
       allowNull: true,
       comment: "MCP 描述",
     },
-    author: {
-      type: DataTypes.STRING(50),
+    transportType: {
+      type: DataTypes.ENUM("stdio", "sse", "streamableHttp"),
       allowNull: false,
-      comment: "作者",
+      comment: "传输方式：stdio / sse / streamableHttp",
     },
-    source: {
-      type: DataTypes.ENUM("official", "community", "custom"),
+    connectionUrl: {
+      type: DataTypes.STRING(500),
       allowNull: false,
-      comment: "来源：官方/社区/自定义",
-    },
-    status: {
-      type: DataTypes.ENUM("online", "offline"),
-      defaultValue: "offline",
-      comment: "状态：在线/离线",
-    },
-    tools: {
-      type: DataTypes.JSON,
-      allowNull: false,
-      defaultValue: [],
-      comment: "工具列表",
+      comment: "连接地址（URL 或本地路径）",
     },
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "所属用户ID，官方为 -1",
+      comment: "创建者 ID",
+    },
+    source: {
+      type: DataTypes.ENUM("builtin"),
+      allowNull: false,
+      defaultValue: "builtin",
+      comment: "来源（固定为 builtin）",
+    },
+    isPublic: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      comment: "是否公开（固定为 true）",
+    },
+    timeout: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 30,
+      comment: "超时时间（秒）",
+    },
+    headers: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "请求头（JSON 字符串）",
+    },
+    remarks: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "备注",
+    },
+    example: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "MCP 示例（使用说明）",
+    },
+    status: {
+      type: DataTypes.ENUM("connected", "disconnected"),
+      allowNull: false,
+      defaultValue: "disconnected",
+      comment: "连接状态：connected / disconnected",
     },
   },
   {

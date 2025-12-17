@@ -41,8 +41,9 @@ export const testConnection = async (): Promise<void> => {
 /**
  * 初始化超级管理员账号
  * 在数据库同步后调用，如果不存在则创建
+ * @returns 管理员用户 ID
  */
-export const initSuperAdmin = async (): Promise<void> => {
+export const initSuperAdmin = async (): Promise<number | null> => {
   try {
     // 动态导入 User 模型，避免循环依赖
     const { User } = await import("../dao/models/index.js");
@@ -51,19 +52,35 @@ export const initSuperAdmin = async (): Promise<void> => {
     const existing = await User.findOne({ where: { username: "superAdmin" } });
     if (existing) {
       console.log("ℹ️  superAdmin 账号已存在");
-      return;
+      return existing.id;
     }
 
     // 创建 superAdmin 账号
     const hashedPassword = await bcrypt.hash("superAdmin", 10);
-    await User.create({
+    const admin = await User.create({
       username: "superAdmin",
       password: hashedPassword,
       role: "root",
     });
     console.log("✅ superAdmin 账号创建成功");
+    return admin.id;
   } catch (error) {
     console.error("❌ 初始化 superAdmin 失败:", (error as Error).message);
+    return null;
+  }
+};
+
+/**
+ * 初始化内置 MCP
+ * 在数据库同步后调用，需要管理员用户 ID
+ * @param adminUserId 管理员用户 ID
+ */
+export const initBuiltinMcps = async (adminUserId: number): Promise<void> => {
+  try {
+    const { initBuiltinMcps: doInitBuiltinMcps } = await import("./builtin-mcps.js");
+    await doInitBuiltinMcps(adminUserId);
+  } catch (error) {
+    console.error("❌ 初始化内置 MCP 失败:", (error as Error).message);
   }
 };
 

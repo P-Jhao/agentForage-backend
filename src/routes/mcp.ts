@@ -1,28 +1,29 @@
 /**
  * MCP 相关路由
+ * 提供 MCP 列表查询和详情查看功能
  */
 import Router from "@koa/router";
 import { tokenAuth } from "../middleware/index.js";
 import { McpDAO } from "../dao/index.js";
-import type { McpSource } from "../dao/models/Mcp.js";
 
 const router = new Router();
 
-// 获取 MCP 广场列表（官方 + 社区）
-router.get("/plaza", async (ctx) => {
-  const { keyword, source } = ctx.query as { keyword?: string; source?: McpSource };
-  const list = await McpDAO.findPlazaList({ keyword, source });
+/**
+ * 获取 MCP 列表
+ * GET /api/mcp/list?keyword=xxx
+ * 权限：所有用户
+ */
+router.get("/list", async (ctx) => {
+  const { keyword } = ctx.query as { keyword?: string };
+  const list = await McpDAO.findAll(keyword);
   ctx.body = { code: 200, message: "ok", data: list };
 });
 
-// 获取我的 MCP 列表（需要登录）
-router.get("/my", tokenAuth(), async (ctx) => {
-  const userId = ctx.state.user.id as number;
-  const list = await McpDAO.findByUserId(userId);
-  ctx.body = { code: 200, message: "ok", data: list };
-});
-
-// 获取 MCP 详情
+/**
+ * 获取 MCP 详情
+ * GET /api/mcp/:id
+ * 权限：所有用户
+ */
 router.get("/:id", async (ctx) => {
   const id = Number(ctx.params.id);
   const mcp = await McpDAO.findById(id);

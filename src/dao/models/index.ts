@@ -8,6 +8,7 @@ import Conversation from "./Conversation.js";
 import Message from "./Message.js";
 import Document from "./Document.js";
 import Mcp from "./Mcp.js";
+import McpForge from "./McpForge.js";
 import ForgeFavorite from "./ForgeFavorite.js";
 
 // 定义模型关联
@@ -37,4 +38,24 @@ ForgeFavorite.belongsTo(User, { foreignKey: "userId", as: "user" });
 Agent.hasMany(ForgeFavorite, { foreignKey: "forgeId", as: "favorites" });
 ForgeFavorite.belongsTo(Agent, { foreignKey: "forgeId", as: "forge" });
 
-export { sequelize, User, Agent, Conversation, Message, Document, Mcp, ForgeFavorite };
+// MCP 与 Forge 的多对多关联（通过 McpForge 中间表）
+Mcp.belongsToMany(Agent, {
+  through: McpForge,
+  foreignKey: "mcpId",
+  otherKey: "forgeId",
+  as: "forges",
+});
+Agent.belongsToMany(Mcp, {
+  through: McpForge,
+  foreignKey: "forgeId",
+  otherKey: "mcpId",
+  as: "mcps",
+});
+
+// McpForge 与 Mcp、Agent 的关联（用于直接查询中间表）
+McpForge.belongsTo(Mcp, { foreignKey: "mcpId", as: "mcp" });
+McpForge.belongsTo(Agent, { foreignKey: "forgeId", as: "forge" });
+Mcp.hasMany(McpForge, { foreignKey: "mcpId", as: "mcpForges" });
+Agent.hasMany(McpForge, { foreignKey: "forgeId", as: "mcpForges" });
+
+export { sequelize, User, Agent, Conversation, Message, Document, Mcp, McpForge, ForgeFavorite };
