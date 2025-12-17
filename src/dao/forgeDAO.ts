@@ -9,11 +9,9 @@ type ForgeFilter = "all" | "my" | "builtin" | "other";
 
 // 创建 Forge 参数
 interface CreateForgeParams {
-  name: string;
   displayName: string;
   description?: string;
   systemPrompt?: string;
-  model?: "qwen" | "deepseek";
   avatar?: string;
   isPublic?: boolean;
   userId: number;
@@ -22,11 +20,9 @@ interface CreateForgeParams {
 
 // 更新 Forge 参数
 interface UpdateForgeParams {
-  name?: string;
   displayName?: string;
   description?: string;
   systemPrompt?: string;
-  model?: "qwen" | "deepseek";
   avatar?: string;
   isPublic?: boolean;
   isActive?: boolean;
@@ -35,8 +31,8 @@ interface UpdateForgeParams {
 class ForgeDAO {
   /**
    * 获取 Forge 列表
-   * @param filter 筛选类型：all 全部公开 / my 我的 / builtin 内置
-   * @param userId 当前用户 ID（用于 my 筛选和判断收藏状态）
+   * @param filter 筛选类型：all 全部公开 / my 我的 / builtin 内置 / other 其他用户
+   * @param userId 当前用户 ID（用于 my/other 筛选和判断收藏状态）
    */
   static async findAll(filter: ForgeFilter, userId?: number) {
     const where: Record<string, unknown> = { isActive: true };
@@ -161,18 +157,6 @@ class ForgeDAO {
    */
   static async exists(id: number) {
     const count = await Agent.count({ where: { id, isActive: true } });
-    return count > 0;
-  }
-
-  /**
-   * 检查名称是否已存在
-   */
-  static async nameExists(name: string, excludeId?: number) {
-    const where: Record<string, unknown> = { name };
-    if (excludeId) {
-      where.id = { [Op.ne]: excludeId };
-    }
-    const count = await Agent.count({ where });
     return count > 0;
   }
 }

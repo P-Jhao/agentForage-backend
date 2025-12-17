@@ -1,23 +1,22 @@
 /**
- * Agent 配置模型
+ * Agent 配置模型（Forge）
  */
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../../config/database.js";
 
 interface AgentAttributes {
   id: number;
-  name: string;
   displayName: string;
   description: string | null;
   systemPrompt: string | null;
-  model: "qwen" | "deepseek";
   isActive: boolean;
-  // Forge 模块新增字段
+  // Forge 模块字段
   userId: number; // 创建者 ID
   source: "builtin" | "user"; // 来源类型：内置 / 用户创建
   avatar: string | null; // 头像（emoji 或 URL）
   usageCount: number; // 使用次数
   isPublic: boolean; // 是否公开（广场可见）
+  summary: string | null; // AI 生成的能力摘要（用于自动匹配）
 }
 
 type AgentCreationAttributes = Optional<
@@ -25,27 +24,26 @@ type AgentCreationAttributes = Optional<
   | "id"
   | "description"
   | "systemPrompt"
-  | "model"
   | "isActive"
   | "source"
   | "avatar"
   | "usageCount"
   | "isPublic"
+  | "summary"
 >;
 
 class Agent extends Model<AgentAttributes, AgentCreationAttributes> implements AgentAttributes {
   declare id: number;
-  declare name: string;
   declare displayName: string;
   declare description: string | null;
   declare systemPrompt: string | null;
-  declare model: "qwen" | "deepseek";
   declare isActive: boolean;
   declare userId: number;
   declare source: "builtin" | "user";
   declare avatar: string | null;
   declare usageCount: number;
   declare isPublic: boolean;
+  declare summary: string | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -57,12 +55,6 @@ Agent.init(
       primaryKey: true,
       autoIncrement: true,
     },
-    name: {
-      type: DataTypes.STRING(50),
-      allowNull: false,
-      unique: true,
-      comment: "Agent 标识名，如 code-audit",
-    },
     displayName: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -70,16 +62,11 @@ Agent.init(
     },
     description: {
       type: DataTypes.TEXT,
-      comment: "Agent 描述",
+      comment: "Forge 介绍（Markdown）",
     },
     systemPrompt: {
       type: DataTypes.TEXT,
       comment: "系统提示词",
-    },
-    model: {
-      type: DataTypes.ENUM("qwen", "deepseek"),
-      defaultValue: "qwen",
-      comment: "使用的模型",
     },
     isActive: {
       type: DataTypes.BOOLEAN,
@@ -110,6 +97,11 @@ Agent.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
       comment: "是否公开（广场可见）",
+    },
+    summary: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: "AI 生成的能力摘要（用于自动匹配 Forge）",
     },
   },
   {

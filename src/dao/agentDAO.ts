@@ -4,12 +4,10 @@
 import { Agent } from "./models/index.js";
 
 interface CreateAgentData {
-  name: string;
   displayName: string;
   userId: number; // 创建者 ID
   description?: string;
   systemPrompt?: string;
-  model?: "qwen" | "deepseek";
 }
 
 class AgentDAO {
@@ -19,10 +17,6 @@ class AgentDAO {
 
   static async findById(id: number) {
     return await Agent.findByPk(id);
-  }
-
-  static async findByName(name: string) {
-    return await Agent.findOne({ where: { name } });
   }
 
   static async create(agentData: CreateAgentData) {

@@ -15,7 +15,7 @@ class ForgeFavoriteDAO {
           model: Agent,
           as: "forge",
           where: { isActive: true },
-          attributes: ["id", "name", "displayName", "avatar", "description", "usageCount"],
+          attributes: ["id", "displayName", "avatar", "description", "usageCount"],
         },
       ],
       order: [["createdAt", "DESC"]],

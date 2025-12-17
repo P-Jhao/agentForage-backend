@@ -9,26 +9,22 @@ import TaskService from "./taskService.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
 
 // Forge 筛选类型
-type ForgeFilter = "all" | "my" | "builtin";
+type ForgeFilter = "all" | "my" | "builtin" | "other";
 
 // 创建 Forge 参数
 interface CreateForgeParams {
-  name: string;
   displayName: string;
   description?: string;
   systemPrompt?: string;
-  model?: "qwen" | "deepseek";
   avatar?: string;
   isPublic?: boolean;
 }
 
 // 更新 Forge 参数
 interface UpdateForgeParams {
-  name?: string;
   displayName?: string;
   description?: string;
   systemPrompt?: string;
-  model?: "qwen" | "deepseek";
   avatar?: string;
   isPublic?: boolean;
 }
@@ -77,12 +73,6 @@ class ForgeService {
    * root 用户创建的为内置 Forge
    */
   static async createForge(params: CreateForgeParams, user: JwtPayload) {
-    // 检查名称是否已存在
-    const nameExists = await ForgeDAO.nameExists(params.name);
-    if (nameExists) {
-      throw Object.assign(new Error("Forge 名称已存在"), { status: 400 });
-    }
-
     // 根据用户角色决定 source
     const source = user.role === "root" ? "builtin" : "user";
 
@@ -113,14 +103,6 @@ class ForgeService {
 
     if (!canEdit) {
       throw Object.assign(new Error("无权限编辑此 Forge"), { status: 403 });
-    }
-
-    // 如果修改了名称，检查是否重复
-    if (params.name && params.name !== forge.name) {
-      const nameExists = await ForgeDAO.nameExists(params.name, id);
-      if (nameExists) {
-        throw Object.assign(new Error("Forge 名称已存在"), { status: 400 });
-      }
     }
 
     await ForgeDAO.update(id, params);
@@ -174,7 +156,7 @@ class ForgeService {
    * 从 Forge 创建任务
    * 1. 增加 Forge 使用次数
    * 2. 创建任务
-   * 3. 返回任务 UUID
+   * 3. 返回任务 UUID 和 Forge 信息
    */
   static async createTaskFromForge(forgeId: number, message: string, userId: number) {
     // 获取 Forge 信息
@@ -202,7 +184,6 @@ class ForgeService {
       forge: {
         id: forge.id,
         systemPrompt: forge.systemPrompt,
-        model: forge.model,
       },
     };
   }

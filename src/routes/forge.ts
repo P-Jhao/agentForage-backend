@@ -9,11 +9,11 @@ import type { JwtPayload } from "../middleware/tokenAuth.js";
 const router = new Router();
 
 // Forge 筛选类型
-type ForgeFilter = "all" | "my" | "builtin";
+type ForgeFilter = "all" | "my" | "builtin" | "other";
 
 /**
  * 获取 Forge 列表
- * GET /api/forge/list?filter=all|my|builtin
+ * GET /api/forge/list?filter=all|my|builtin|other
  */
 router.get("/list", tokenAuth(), async (ctx) => {
   const user = ctx.state.user as JwtPayload;
@@ -63,34 +63,24 @@ router.get("/:id", tokenAuth(), async (ctx) => {
 router.post("/", tokenAuth(), async (ctx) => {
   const user = ctx.state.user as JwtPayload;
   const body = ctx.request.body as {
-    name?: string;
     displayName?: string;
     description?: string;
     systemPrompt?: string;
-    model?: "qwen" | "deepseek";
     avatar?: string;
     isPublic?: boolean;
   };
 
   // 参数验证
-  if (!body.name || !body.displayName) {
-    ctx.body = { code: 400, message: "名称和显示名称不能为空", data: null };
-    return;
-  }
-
-  // 验证 name 格式（只允许小写字母、数字、连字符）
-  if (!/^[a-z0-9-]+$/.test(body.name)) {
-    ctx.body = { code: 400, message: "名称只能包含小写字母、数字和连字符", data: null };
+  if (!body.displayName) {
+    ctx.body = { code: 400, message: "名称不能为空", data: null };
     return;
   }
 
   const result = await ForgeService.createForge(
     {
-      name: body.name,
       displayName: body.displayName,
       description: body.description,
       systemPrompt: body.systemPrompt,
-      model: body.model,
       avatar: body.avatar,
       isPublic: body.isPublic,
     },
@@ -114,20 +104,12 @@ router.put("/:id", tokenAuth(), async (ctx) => {
   }
 
   const body = ctx.request.body as {
-    name?: string;
     displayName?: string;
     description?: string;
     systemPrompt?: string;
-    model?: "qwen" | "deepseek";
     avatar?: string;
     isPublic?: boolean;
   };
-
-  // 如果修改了 name，验证格式
-  if (body.name && !/^[a-z0-9-]+$/.test(body.name)) {
-    ctx.body = { code: 400, message: "名称只能包含小写字母、数字和连字符", data: null };
-    return;
-  }
 
   const result = await ForgeService.updateForge(id, body, user);
   ctx.body = { code: 200, message: "更新成功", data: result };
