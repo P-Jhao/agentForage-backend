@@ -9,15 +9,17 @@ interface UserAttributes {
   username: string;
   password: string;
   apiQuota: number;
+  role: "user" | "root"; // 用户角色：普通用户 / 超级管理员
 }
 
-type UserCreationAttributes = Optional<UserAttributes, "id" | "apiQuota">;
+type UserCreationAttributes = Optional<UserAttributes, "id" | "apiQuota" | "role">;
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   declare id: number;
   declare username: string;
   declare password: string;
   declare apiQuota: number;
+  declare role: "user" | "root";
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -44,6 +46,11 @@ User.init(
       type: DataTypes.INTEGER,
       defaultValue: 1000,
       comment: "API 调用配额",
+    },
+    role: {
+      type: DataTypes.ENUM("user", "root"),
+      defaultValue: "user",
+      comment: "用户角色：user 普通用户 / root 超级管理员",
     },
   },
   {

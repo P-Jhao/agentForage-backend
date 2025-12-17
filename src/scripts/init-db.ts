@@ -19,6 +19,7 @@ const initDatabase = async (): Promise<void> => {
         description: "对代码进行安全漏洞检测，识别 SQL 注入、XSS、敏感信息泄露等风险",
         systemPrompt: "你是一个专业的代码安全审计专家...",
         model: "qwen" as const,
+        userId: 1, // 系统默认用户
       },
       {
         name: "scoring",
@@ -26,6 +27,7 @@ const initDatabase = async (): Promise<void> => {
         description: "基于预设样本和评分标准，对输入内容进行自动打分",
         systemPrompt: "你是一个内容评分专家...",
         model: "qwen" as const,
+        userId: 1, // 系统默认用户
       },
       {
         name: "rag-search",
@@ -33,6 +35,7 @@ const initDatabase = async (): Promise<void> => {
         description: "基于上传的文档进行语义检索，返回相关内容",
         systemPrompt: "你是一个知识检索助手...",
         model: "deepseek" as const,
+        userId: 1, // 系统默认用户
       },
     ];
 

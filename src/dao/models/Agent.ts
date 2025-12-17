@@ -12,11 +12,25 @@ interface AgentAttributes {
   systemPrompt: string | null;
   model: "qwen" | "deepseek";
   isActive: boolean;
+  // Forge 模块新增字段
+  userId: number; // 创建者 ID
+  source: "builtin" | "user"; // 来源类型：内置 / 用户创建
+  avatar: string | null; // 头像（emoji 或 URL）
+  usageCount: number; // 使用次数
+  isPublic: boolean; // 是否公开（广场可见）
 }
 
 type AgentCreationAttributes = Optional<
   AgentAttributes,
-  "id" | "description" | "systemPrompt" | "model" | "isActive"
+  | "id"
+  | "description"
+  | "systemPrompt"
+  | "model"
+  | "isActive"
+  | "source"
+  | "avatar"
+  | "usageCount"
+  | "isPublic"
 >;
 
 class Agent extends Model<AgentAttributes, AgentCreationAttributes> implements AgentAttributes {
@@ -27,6 +41,11 @@ class Agent extends Model<AgentAttributes, AgentCreationAttributes> implements A
   declare systemPrompt: string | null;
   declare model: "qwen" | "deepseek";
   declare isActive: boolean;
+  declare userId: number;
+  declare source: "builtin" | "user";
+  declare avatar: string | null;
+  declare usageCount: number;
+  declare isPublic: boolean;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -66,6 +85,31 @@ Agent.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
       comment: "是否启用",
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      comment: "创建者 ID",
+    },
+    source: {
+      type: DataTypes.ENUM("builtin", "user"),
+      defaultValue: "user",
+      comment: "来源类型：builtin 内置 / user 用户创建",
+    },
+    avatar: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: "头像（emoji 或 URL）",
+    },
+    usageCount: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      comment: "使用次数",
+    },
+    isPublic: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      comment: "是否公开（广场可见）",
     },
   },
   {

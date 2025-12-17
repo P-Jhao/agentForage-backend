@@ -6,6 +6,7 @@ import { Agent } from "./models/index.js";
 interface CreateAgentData {
   name: string;
   displayName: string;
+  userId: number; // 创建者 ID
   description?: string;
   systemPrompt?: string;
   model?: "qwen" | "deepseek";
