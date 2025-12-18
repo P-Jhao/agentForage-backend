@@ -23,12 +23,17 @@ export interface McpAttributes {
   name: string; // MCP 名称（必选）
   description: string | null; // MCP 描述（可选）
   transportType: McpTransportType; // 传输方式（必选）
-  connectionUrl: string; // 连接地址（必选）
+  // stdio 类型使用 command + args + env
+  command: string | null; // 启动命令（stdio 类型必选）
+  args: string | null; // 命令参数（stdio 类型可选，JSON 数组格式）
+  env: string | null; // 环境变量（stdio 类型可选，JSON 对象格式）
+  // sse/streamableHttp 类型使用 url + headers
+  url: string | null; // 连接地址（sse/streamableHttp 类型必选）
   userId: number; // 创建者 ID
   source: McpSource; // 来源（固定为 builtin）
   isPublic: boolean; // 是否公开（固定为 true）
   timeout: number | null; // 超时时间（秒，可选）
-  headers: string | null; // 请求头（JSON 字符串，可选）
+  headers: string | null; // 请求头（JSON 字符串，可选，用于 sse/http）
   remarks: string | null; // 备注（可选）
   example: string | null; // MCP 示例（可选）
   status: McpStatus; // 连接状态
@@ -44,6 +49,10 @@ export type McpCreationAttributes = Optional<
   | "source"
   | "isPublic"
   | "description"
+  | "command"
+  | "args"
+  | "env"
+  | "url"
   | "timeout"
   | "headers"
   | "remarks"
@@ -55,7 +64,10 @@ class Mcp extends Model<McpAttributes, McpCreationAttributes> implements McpAttr
   declare name: string;
   declare description: string | null;
   declare transportType: McpTransportType;
-  declare connectionUrl: string;
+  declare command: string | null;
+  declare args: string | null;
+  declare env: string | null;
+  declare url: string | null;
   declare userId: number;
   declare source: McpSource;
   declare isPublic: boolean;
@@ -90,10 +102,25 @@ Mcp.init(
       allowNull: false,
       comment: "传输方式：stdio / sse / streamableHttp",
     },
-    connectionUrl: {
+    command: {
       type: DataTypes.STRING(500),
-      allowNull: false,
-      comment: "连接地址（URL 或本地路径）",
+      allowNull: true,
+      comment: "启动命令（stdio 类型使用）",
+    },
+    args: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "命令参数（stdio 类型使用，JSON 数组格式）",
+    },
+    env: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "环境变量（stdio 类型使用，JSON 对象格式）",
+    },
+    url: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: "连接地址（sse/streamableHttp 类型使用）",
     },
     userId: {
       type: DataTypes.INTEGER,

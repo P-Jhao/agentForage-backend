@@ -21,12 +21,17 @@ interface McpDetailResult {
   name: string;
   description: string | null;
   transportType: string;
-  connectionUrl: string;
+  // stdio 类型
+  command: string | null;
+  args: string | null;
+  env: string | null;
+  // sse/http 类型
+  url: string | null;
+  headers: string | null;
   userId: number;
   source: string;
   isPublic: boolean;
   timeout: number | null;
-  headers: string | null;
   remarks: string | null;
   example: string | null;
   status: string;
@@ -158,12 +163,15 @@ class McpService {
       name: mcpData.name,
       description: mcpData.description,
       transportType: mcpData.transportType,
-      connectionUrl: mcpData.connectionUrl,
+      command: mcpData.command,
+      args: mcpData.args,
+      env: mcpData.env,
+      url: mcpData.url,
+      headers: mcpData.headers,
       userId: mcpData.userId,
       source: mcpData.source,
       isPublic: mcpData.isPublic,
       timeout: mcpData.timeout,
-      headers: mcpData.headers,
       remarks: mcpData.remarks,
       example: mcpData.example,
       status: mcpData.status,

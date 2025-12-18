@@ -108,9 +108,14 @@ export interface MCPClientConfig {
   id: number; // MCP ID（数据库主键）
   name: string; // MCP 名称
   transportType: MCPTransportType; // 传输类型
-  connectionUrl: string; // 连接地址（命令或 URL）
+  // stdio 类型使用
+  command?: string; // 启动命令
+  args?: string[]; // 命令参数（数组）
+  env?: Record<string, string>; // 环境变量（对象）
+  // sse/streamableHttp 类型使用
+  url?: string; // 连接地址
+  headers?: Record<string, string>; // 请求头（对象）
   timeout?: number; // 超时时间（秒）
-  headers?: string; // 请求头（JSON 字符串，用于 HTTP 类型）
 }
 
 // ==================== MCP 协议消息类型 ====================

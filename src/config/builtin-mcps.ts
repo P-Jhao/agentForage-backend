@@ -17,7 +17,8 @@ export const builtinMcps: BuiltinMcpConfig[] = [
     name: "文件系统 MCP",
     description: "提供文件系统操作能力，包括读取、写入、列出目录等功能",
     transportType: "stdio",
-    connectionUrl: "npx -y @anthropic/mcp-server-filesystem",
+    command: "npx",
+    args: JSON.stringify(["@modelcontextprotocol/server-filesystem", "C:/Users/22126/Desktop"]),
     timeout: 30,
     example: `// 使用示例
 // 列出目录内容
@@ -26,28 +27,6 @@ await mcp.call("list_directory", { path: "/home/user" });
 // 读取文件
 await mcp.call("read_file", { path: "/home/user/example.txt" });`,
     remarks: "需要配置允许访问的目录路径",
-  },
-  {
-    name: "网页搜索 MCP",
-    description: "提供网页搜索能力，支持多种搜索引擎",
-    transportType: "stdio",
-    connectionUrl: "npx -y @anthropic/mcp-server-brave-search",
-    timeout: 60,
-    example: `// 使用示例
-// 搜索网页
-await mcp.call("brave_web_search", { query: "TypeScript 最佳实践" });`,
-    remarks: "需要配置 BRAVE_API_KEY 环境变量",
-  },
-  {
-    name: "数据库查询 MCP",
-    description: "提供 PostgreSQL 数据库查询能力",
-    transportType: "stdio",
-    connectionUrl: "npx -y @anthropic/mcp-server-postgres",
-    timeout: 30,
-    example: `// 使用示例
-// 执行 SQL 查询
-await mcp.call("query", { sql: "SELECT * FROM users LIMIT 10" });`,
-    remarks: "需要配置数据库连接字符串",
   },
 ];
 

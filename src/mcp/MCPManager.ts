@@ -53,9 +53,14 @@ class MCPManager {
       id: mcp.id,
       name: mcp.name,
       transportType: mcp.transportType,
-      connectionUrl: mcp.connectionUrl,
+      // stdio 类型
+      command: mcp.command || undefined,
+      args: mcp.args ? JSON.parse(mcp.args) : undefined,
+      env: mcp.env ? JSON.parse(mcp.env) : undefined,
+      // sse/http 类型
+      url: mcp.url || undefined,
+      headers: mcp.headers ? JSON.parse(mcp.headers) : undefined,
       timeout: mcp.timeout || 30,
-      headers: mcp.headers || undefined,
     };
 
     // 根据传输类型创建客户端

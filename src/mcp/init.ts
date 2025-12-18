@@ -31,10 +31,23 @@ export async function initMCPConnections(): Promise<void> {
       const index = `[${i + 1}/${mcps.length}]`;
       const startTime = Date.now();
 
-      // 打印 MCP 信息：名称、传输方式、连接地址
+      // 打印 MCP 信息：名称、传输方式、连接信息
       console.log(`   ${index} ${mcp.name}`);
       console.log(`       传输方式: ${mcp.transportType}`);
-      console.log(`       连接地址: ${mcp.connectionUrl}`);
+      if (mcp.transportType === "stdio") {
+        console.log(`       命令: ${mcp.command}`);
+        if (mcp.args) {
+          console.log(`       参数: ${mcp.args}`);
+        }
+        if (mcp.env) {
+          console.log(`       环境变量: ${mcp.env}`);
+        }
+      } else {
+        console.log(`       URL: ${mcp.url}`);
+        if (mcp.headers) {
+          console.log(`       请求头: ${mcp.headers}`);
+        }
+      }
       process.stdout.write(`       状态: `);
 
       try {

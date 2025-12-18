@@ -15,21 +15,47 @@ const router = new Router();
  */
 router.post("/", tokenAuth(), async (ctx) => {
   const user = ctx.state.user as JwtPayload;
-  const { name, transportType, connectionUrl, description, timeout, headers, remarks, example } =
-    ctx.request.body as {
-      name: string;
-      transportType: "stdio" | "sse" | "streamableHttp";
-      connectionUrl: string;
-      description?: string;
-      timeout?: number;
-      headers?: string;
-      remarks?: string;
-      example?: string;
-    };
+  const {
+    name,
+    transportType,
+    command,
+    args,
+    env,
+    url,
+    description,
+    timeout,
+    headers,
+    remarks,
+    example,
+  } = ctx.request.body as {
+    name: string;
+    transportType: "stdio" | "sse" | "streamableHttp";
+    command?: string;
+    args?: string;
+    env?: string;
+    url?: string;
+    description?: string;
+    timeout?: number;
+    headers?: string;
+    remarks?: string;
+    example?: string;
+  };
 
   // 参数验证
-  if (!name || !transportType || !connectionUrl) {
-    ctx.body = { code: 400, message: "名称、传输方式、连接地址为必填项", data: null };
+  if (!name || !transportType) {
+    ctx.body = { code: 400, message: "名称、传输方式为必填项", data: null };
+    return;
+  }
+
+  // stdio 类型必须有 command
+  if (transportType === "stdio" && !command) {
+    ctx.body = { code: 400, message: "stdio 类型必须填写启动命令", data: null };
+    return;
+  }
+
+  // sse/http 类型必须有 url
+  if ((transportType === "sse" || transportType === "streamableHttp") && !url) {
+    ctx.body = { code: 400, message: "SSE/HTTP 类型必须填写连接地址", data: null };
     return;
   }
 
@@ -51,19 +77,63 @@ router.post("/", tokenAuth(), async (ctx) => {
     return;
   }
 
+  // args JSON 数组格式验证
+  if (args) {
+    try {
+      const parsed = JSON.parse(args);
+      if (!Array.isArray(parsed)) {
+        ctx.body = { code: 400, message: "命令参数必须为 JSON 数组格式", data: null };
+        return;
+      }
+    } catch {
+      ctx.body = { code: 400, message: "命令参数必须为有效的 JSON 数组格式", data: null };
+      return;
+    }
+  }
+
+  // env JSON 对象格式验证
+  if (env) {
+    try {
+      const parsed = JSON.parse(env);
+      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
+        ctx.body = { code: 400, message: "环境变量必须为 JSON 对象格式", data: null };
+        return;
+      }
+    } catch {
+      ctx.body = { code: 400, message: "环境变量必须为有效的 JSON 对象格式", data: null };
+      return;
+    }
+  }
+
   // 请求头 JSON 格式验证
   if (headers) {
     try {
-      JSON.parse(headers);
+      const parsed = JSON.parse(headers);
+      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
+        ctx.body = { code: 400, message: "请求头必须为 JSON 对象格式", data: null };
+        return;
+      }
     } catch {
-      ctx.body = { code: 400, message: "请求头必须为有效的 JSON 格式", data: null };
+      ctx.body = { code: 400, message: "请求头必须为有效的 JSON 对象格式", data: null };
       return;
     }
   }
 
   try {
     const mcp = await McpService.createMCP(
-      { name, transportType, connectionUrl, description, timeout, headers, remarks, example },
+      {
+        name,
+        transportType,
+        command,
+        args,
+        env,
+        url,
+        description,
+        timeout,
+        headers,
+        remarks,
+        example,
+      },
       user
     );
     ctx.body = { code: 200, message: "创建成功", data: mcp };
@@ -199,17 +269,31 @@ router.get("/:id", async (ctx) => {
 router.put("/:id", tokenAuth(), async (ctx) => {
   const id = Number(ctx.params.id);
   const user = ctx.state.user as JwtPayload;
-  const { name, transportType, connectionUrl, description, timeout, headers, remarks, example } =
-    ctx.request.body as {
-      name?: string;
-      transportType?: "stdio" | "sse" | "streamableHttp";
-      connectionUrl?: string;
-      description?: string;
-      timeout?: number;
-      headers?: string;
-      remarks?: string;
-      example?: string;
-    };
+  const {
+    name,
+    transportType,
+    command,
+    args,
+    env,
+    url,
+    description,
+    timeout,
+    headers,
+    remarks,
+    example,
+  } = ctx.request.body as {
+    name?: string;
+    transportType?: "stdio" | "sse" | "streamableHttp";
+    command?: string;
+    args?: string;
+    env?: string;
+    url?: string;
+    description?: string;
+    timeout?: number;
+    headers?: string;
+    remarks?: string;
+    example?: string;
+  };
 
   if (isNaN(id)) {
     ctx.body = { code: 400, message: "无效的 MCP ID", data: null };
@@ -234,12 +318,44 @@ router.put("/:id", tokenAuth(), async (ctx) => {
     return;
   }
 
+  // args JSON 数组格式验证
+  if (args) {
+    try {
+      const parsed = JSON.parse(args);
+      if (!Array.isArray(parsed)) {
+        ctx.body = { code: 400, message: "命令参数必须为 JSON 数组格式", data: null };
+        return;
+      }
+    } catch {
+      ctx.body = { code: 400, message: "命令参数必须为有效的 JSON 数组格式", data: null };
+      return;
+    }
+  }
+
+  // env JSON 对象格式验证
+  if (env) {
+    try {
+      const parsed = JSON.parse(env);
+      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
+        ctx.body = { code: 400, message: "环境变量必须为 JSON 对象格式", data: null };
+        return;
+      }
+    } catch {
+      ctx.body = { code: 400, message: "环境变量必须为有效的 JSON 对象格式", data: null };
+      return;
+    }
+  }
+
   // 请求头 JSON 格式验证
   if (headers) {
     try {
-      JSON.parse(headers);
+      const parsed = JSON.parse(headers);
+      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
+        ctx.body = { code: 400, message: "请求头必须为 JSON 对象格式", data: null };
+        return;
+      }
     } catch {
-      ctx.body = { code: 400, message: "请求头必须为有效的 JSON 格式", data: null };
+      ctx.body = { code: 400, message: "请求头必须为有效的 JSON 对象格式", data: null };
       return;
     }
   }
@@ -247,7 +363,19 @@ router.put("/:id", tokenAuth(), async (ctx) => {
   try {
     const mcp = await McpService.updateMCP(
       id,
-      { name, transportType, connectionUrl, description, timeout, headers, remarks, example },
+      {
+        name,
+        transportType,
+        command,
+        args,
+        env,
+        url,
+        description,
+        timeout,
+        headers,
+        remarks,
+        example,
+      },
       user
     );
     ctx.body = { code: 200, message: "更新成功", data: mcp };
