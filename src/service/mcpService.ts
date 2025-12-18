@@ -59,6 +59,7 @@ class McpService {
 
   /**
    * 创建 MCP（仅管理员）
+   * 创建后自动尝试连接
    * @param data MCP 数据
    * @param user 当前用户
    */
@@ -72,7 +73,20 @@ class McpService {
       userId: user.id,
     });
 
-    return mcp;
+    // 自动尝试连接
+    try {
+      const success = await mcpManager.connect(mcp.id);
+      if (success) {
+        await McpDAO.updateStatus(mcp.id, "connected");
+        console.log(`✅ MCP ${mcp.id} 创建后自动连接成功`);
+      }
+    } catch (error) {
+      console.log(`ℹ️ MCP ${mcp.id} 创建后自动连接失败:`, (error as Error).message);
+      // 连接失败不影响创建结果，状态保持 disconnected
+    }
+
+    // 返回最新状态
+    return McpDAO.findById(mcp.id);
   }
 
   /**
@@ -184,6 +198,7 @@ class McpService {
 
   /**
    * 更新 MCP（仅管理员）
+   * 更新后自动尝试重新连接
    * @param id MCP ID
    * @param data 更新数据
    * @param user 当前用户
@@ -199,8 +214,23 @@ class McpService {
     }
 
     // 更新 MCP
-    const updated = await McpDAO.update(id, data);
-    return updated;
+    await McpDAO.update(id, data);
+
+    // 断开旧连接，尝试重新连接
+    try {
+      await mcpManager.disconnect(id);
+      const success = await mcpManager.connect(id);
+      if (success) {
+        await McpDAO.updateStatus(id, "connected");
+        console.log(`✅ MCP ${id} 更新后自动连接成功`);
+      }
+    } catch (error) {
+      console.log(`ℹ️ MCP ${id} 更新后自动连接失败:`, (error as Error).message);
+      await McpDAO.updateStatus(id, "disconnected");
+    }
+
+    // 返回最新状态
+    return McpDAO.findById(id);
   }
 
   /**
