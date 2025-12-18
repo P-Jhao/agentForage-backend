@@ -76,7 +76,7 @@ class UserService {
     if (!user) {
       throw Object.assign(new Error("用户不存在"), { status: 404 });
     }
-    return { id: user.id, username: user.username, apiQuota: user.apiQuota };
+    return { id: user.id, username: user.username, apiQuota: user.apiQuota, role: user.role };
   }
 }
 
