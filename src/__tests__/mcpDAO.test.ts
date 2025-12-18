@@ -60,7 +60,7 @@ describe("McpDAO", () => {
       const mcp = await McpDAO.create({
         name: "测试 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -80,7 +80,7 @@ describe("McpDAO", () => {
             transportType: fc.constantFrom("stdio", "sse", "streamableHttp") as fc.Arbitrary<
               "stdio" | "sse" | "streamableHttp"
             >,
-            connectionUrl: fc.webUrl(),
+            url: fc.webUrl(),
           }),
           async (data) => {
             const mcp = await McpDAO.create({
@@ -106,7 +106,7 @@ describe("McpDAO", () => {
       const mcp = await McpDAO.create({
         name: "原始名称",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -126,7 +126,7 @@ describe("McpDAO", () => {
       const mcp = await McpDAO.create({
         name: "待删除 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -153,7 +153,7 @@ describe("McpDAO", () => {
       const mcp = await McpDAO.create({
         name: "测试 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -177,7 +177,7 @@ describe("McpDAO", () => {
       const mcp = await McpDAO.create({
         name: "测试 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -205,7 +205,7 @@ describe("McpDAO", () => {
       await McpDAO.create({
         name: "MCP 1",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse1",
+        url: "http://localhost:3000/sse1",
         userId: adminUser.id,
       });
 
@@ -214,7 +214,7 @@ describe("McpDAO", () => {
       await McpDAO.create({
         name: "MCP 2",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse2",
+        url: "http://localhost:3000/sse2",
         userId: adminUser.id,
       });
 
@@ -230,7 +230,8 @@ describe("McpDAO", () => {
         name: "文件系统 MCP",
         description: "文件操作",
         transportType: "stdio",
-        connectionUrl: "npx mcp-server",
+        command: "npx",
+        args: '["mcp-server"]',
         userId: adminUser.id,
       });
 
@@ -238,7 +239,7 @@ describe("McpDAO", () => {
         name: "网页搜索 MCP",
         description: "搜索引擎",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -267,7 +268,7 @@ describe("McpForgeDAO", () => {
       const mcp = await McpDAO.create({
         name: "测试 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -302,7 +303,7 @@ describe("McpForgeDAO", () => {
       const mcp = await McpDAO.create({
         name: "测试 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -342,7 +343,7 @@ describe("McpForgeDAO", () => {
       const mcp = await McpDAO.create({
         name: "测试 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
@@ -401,13 +402,13 @@ describe("McpForgeDAO", () => {
       const mcp1 = await McpDAO.create({
         name: "MCP 1",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse1",
+        url: "http://localhost:3000/sse1",
         userId: adminUser.id,
       });
       const mcp2 = await McpDAO.create({
         name: "MCP 2",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse2",
+        url: "http://localhost:3000/sse2",
         userId: adminUser.id,
       });
 
@@ -426,19 +427,19 @@ describe("McpForgeDAO", () => {
       const mcp1 = await McpDAO.create({
         name: "MCP 1",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse1",
+        url: "http://localhost:3000/sse1",
         userId: adminUser.id,
       });
       const mcp2 = await McpDAO.create({
         name: "MCP 2",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse2",
+        url: "http://localhost:3000/sse2",
         userId: adminUser.id,
       });
       const mcp3 = await McpDAO.create({
         name: "MCP 3",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse3",
+        url: "http://localhost:3000/sse3",
         userId: adminUser.id,
       });
 
@@ -467,7 +468,7 @@ describe("McpForgeDAO", () => {
       const mcp = await McpDAO.create({
         name: "公开 MCP",
         transportType: "sse",
-        connectionUrl: "http://localhost:3000/sse",
+        url: "http://localhost:3000/sse",
         userId: adminUser.id,
       });
 
