@@ -3,7 +3,7 @@
  * 处理任务（会话）的数据库操作
  */
 import { Op } from "sequelize";
-import { Conversation, Message } from "./models/index.js";
+import { Conversation, Message, Agent } from "./models/index.js";
 import type { TaskStatus } from "./models/Conversation.js";
 
 // 创建任务参数
@@ -44,14 +44,24 @@ class TaskDAO {
   }
 
   /**
-   * 按 UUID 查询任务
+   * 按 UUID 查询任务（包含关联的 Forge 信息）
    */
   static async findByUuid(uuid: string) {
-    return await Conversation.findOne({ where: { uuid } });
+    return await Conversation.findOne({
+      where: { uuid },
+      include: [
+        {
+          model: Agent,
+          as: "agent",
+          attributes: ["id", "displayName", "avatar"],
+          required: false,
+        },
+      ],
+    });
   }
 
   /**
-   * 按用户 ID 查询任务列表
+   * 按用户 ID 查询任务列表（包含关联的 Forge 信息）
    * 支持关键词搜索和收藏筛选
    * 按 updatedAt 降序排序
    */
@@ -74,6 +84,14 @@ class TaskDAO {
     return await Conversation.findAll({
       where,
       order: [["updatedAt", "DESC"]],
+      include: [
+        {
+          model: Agent,
+          as: "agent",
+          attributes: ["id", "displayName", "avatar"],
+          required: false,
+        },
+      ],
     });
   }
 
