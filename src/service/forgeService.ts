@@ -5,12 +5,19 @@
 import { randomUUID } from "crypto";
 import ForgeDAO from "../dao/forgeDAO.js";
 import ForgeFavoriteDAO from "../dao/forgeFavoriteDAO.js";
-import McpForgeDAO from "../dao/mcpForgeDAO.js";
+import McpForgeDAO, { type McpToolAssociation } from "../dao/mcpForgeDAO.js";
 import TaskService from "./taskService.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
+import type { ToolInfo } from "../dao/models/McpForge.js";
 
 // Forge 筛选类型
 type ForgeFilter = "all" | "my" | "builtin" | "other";
+
+// MCP 工具选择参数（前端传入）
+export interface McpToolSelection {
+  mcpId: number;
+  tools: ToolInfo[];
+}
 
 // 创建 Forge 参数
 interface CreateForgeParams {
@@ -19,7 +26,8 @@ interface CreateForgeParams {
   systemPrompt?: string;
   avatar?: string;
   isPublic?: boolean;
-  mcpIds?: number[];
+  mcpIds?: number[]; // 兼容旧接口
+  mcpTools?: McpToolSelection[]; // 新接口：MCP 工具选择
 }
 
 // 更新 Forge 参数
@@ -29,7 +37,8 @@ interface UpdateForgeParams {
   systemPrompt?: string;
   avatar?: string;
   isPublic?: boolean;
-  mcpIds?: number[];
+  mcpIds?: number[]; // 兼容旧接口
+  mcpTools?: McpToolSelection[]; // 新接口：MCP 工具选择
 }
 
 class ForgeService {
@@ -49,7 +58,7 @@ class ForgeService {
 
   /**
    * 获取 Forge 详情
-   * 返回额外的权限信息：isOwner, canEdit，以及关联的 MCP 列表
+   * 返回额外的权限信息：isOwner, canEdit，以及关联的 MCP 和工具列表
    */
   static async getForgeById(id: number, user?: JwtPayload) {
     const forge = await ForgeDAO.findById(id, user?.id);
@@ -64,15 +73,21 @@ class ForgeService {
     // root 用户可以编辑所有，普通用户只能编辑自己创建的非内置 Forge
     const canEdit = isRoot || (isOwner && forge.source === "user");
 
-    // 获取关联的 MCP ID 列表
+    // 获取关联的 MCP 和工具列表
     const mcpAssociations = await McpForgeDAO.findByForgeId(id);
     const mcpIds = mcpAssociations.map((a) => a.mcpId);
+    // 返回完整的 MCP 工具关联信息
+    const mcpTools: McpToolSelection[] = mcpAssociations.map((a) => ({
+      mcpId: a.mcpId,
+      tools: a.tools || [],
+    }));
 
     return {
       ...forge,
       isOwner,
       canEdit,
-      mcpIds,
+      mcpIds, // 兼容旧接口
+      mcpTools, // 新接口：包含工具信息
     };
   }
 
@@ -99,8 +114,8 @@ class ForgeService {
     // 如果没有头像，随机分配默认头像
     const avatar = params.avatar || this.getRandomDefaultAvatar();
 
-    // 提取 mcpIds，不传给 ForgeDAO
-    const { mcpIds, ...forgeParams } = params;
+    // 提取 mcpIds 和 mcpTools，不传给 ForgeDAO
+    const { mcpIds, mcpTools, ...forgeParams } = params;
 
     const forge = await ForgeDAO.create({
       ...forgeParams,
@@ -109,8 +124,16 @@ class ForgeService {
       source,
     });
 
-    // 创建 MCP 关联
-    if (mcpIds && mcpIds.length > 0) {
+    // 创建 MCP 工具关联（优先使用 mcpTools，兼容旧的 mcpIds）
+    if (mcpTools && mcpTools.length > 0) {
+      // 新接口：带工具信息
+      const associations: McpToolAssociation[] = mcpTools.map((mt) => ({
+        mcpId: mt.mcpId,
+        tools: mt.tools,
+      }));
+      await McpForgeDAO.bulkCreateWithTools(associations, forge.id);
+    } else if (mcpIds && mcpIds.length > 0) {
+      // 兼容旧接口：只有 MCP ID，没有工具信息
       await McpForgeDAO.bulkCreate(mcpIds, forge.id);
     }
 
@@ -137,14 +160,22 @@ class ForgeService {
       throw Object.assign(new Error("无权限编辑此 Forge"), { status: 403 });
     }
 
-    // 提取 mcpIds，不传给 ForgeDAO
-    const { mcpIds, ...forgeParams } = params;
+    // 提取 mcpIds 和 mcpTools，不传给 ForgeDAO
+    const { mcpIds, mcpTools, ...forgeParams } = params;
 
     // 更新 Forge 基本信息
     await ForgeDAO.update(id, forgeParams);
 
-    // 更新 MCP 关联（如果传了 mcpIds）
-    if (mcpIds !== undefined) {
+    // 更新 MCP 工具关联（优先使用 mcpTools，兼容旧的 mcpIds）
+    if (mcpTools !== undefined) {
+      // 新接口：带工具信息
+      const associations: McpToolAssociation[] = mcpTools.map((mt) => ({
+        mcpId: mt.mcpId,
+        tools: mt.tools,
+      }));
+      await McpForgeDAO.updateForgeToolAssociations(id, associations);
+    } else if (mcpIds !== undefined) {
+      // 兼容旧接口：只有 MCP ID，没有工具信息
       await McpForgeDAO.updateForgeAssociations(id, mcpIds);
     }
 

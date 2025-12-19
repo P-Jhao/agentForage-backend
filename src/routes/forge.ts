@@ -68,7 +68,16 @@ router.post("/", tokenAuth(), async (ctx) => {
     systemPrompt?: string;
     avatar?: string;
     isPublic?: boolean;
-    mcpIds?: number[];
+    mcpIds?: number[]; // 兼容旧接口
+    mcpTools?: Array<{
+      // 新接口：MCP 工具选择
+      mcpId: number;
+      tools: Array<{
+        name: string;
+        description: string;
+        inputSchema: Record<string, unknown>;
+      }>;
+    }>;
   };
 
   // 参数验证
@@ -85,6 +94,7 @@ router.post("/", tokenAuth(), async (ctx) => {
       avatar: body.avatar,
       isPublic: body.isPublic,
       mcpIds: body.mcpIds,
+      mcpTools: body.mcpTools,
     },
     user
   );
@@ -111,7 +121,16 @@ router.put("/:id", tokenAuth(), async (ctx) => {
     systemPrompt?: string;
     avatar?: string;
     isPublic?: boolean;
-    mcpIds?: number[];
+    mcpIds?: number[]; // 兼容旧接口
+    mcpTools?: Array<{
+      // 新接口：MCP 工具选择
+      mcpId: number;
+      tools: Array<{
+        name: string;
+        description: string;
+        inputSchema: Record<string, unknown>;
+      }>;
+    }>;
   };
 
   const result = await ForgeService.updateForge(id, body, user);

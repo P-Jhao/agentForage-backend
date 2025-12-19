@@ -9,6 +9,7 @@ import fc from "fast-check";
 import { sequelize, User, Mcp, McpForge, Agent } from "../dao/models/index.js";
 import McpDAO from "../dao/mcpDAO.js";
 import McpForgeDAO from "../dao/mcpForgeDAO.js";
+import type { ToolInfo } from "../dao/models/McpForge.js";
 
 // 测试用户数据
 let adminUser: User;
@@ -482,6 +483,167 @@ describe("McpForgeDAO", () => {
       // 所有 MCP 都是公开的，应返回空数组
       const nonPublicMcps = await McpForgeDAO.findNonPublicMcpsByForgeId(forge.id);
       expect(nonPublicMcps.length).toBe(0);
+    });
+  });
+});
+
+/**
+ * 生成有效的 ToolInfo 对象
+ */
+const toolInfoArbitrary = fc.record({
+  name: fc.string({ minLength: 1, maxLength: 50 }).filter((s) => s.trim().length > 0),
+  description: fc.string({ minLength: 1, maxLength: 200 }),
+  inputSchema: fc.record({
+    type: fc.constant("object"),
+    properties: fc.dictionary(
+      fc.string({ minLength: 1, maxLength: 20 }).filter((s) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s)),
+      fc.record({
+        type: fc.constantFrom("string", "number", "boolean"),
+        description: fc.string({ minLength: 0, maxLength: 100 }),
+      })
+    ),
+    required: fc.array(fc.string({ minLength: 1, maxLength: 20 }), { maxLength: 5 }),
+  }),
+}) as fc.Arbitrary<ToolInfo>;
+
+describe("McpForge 工具关联", () => {
+  describe("Property 1: 工具信息完整性", () => {
+    /**
+     * Property 1: 工具信息完整性
+     * 对于任何存储的工具信息，系统应包含 name、description 和 inputSchema 三个必需字段
+     * **Validates: Requirements 1.4, 2.2**
+     */
+    it("存储的工具信息应包含 name、description 和 inputSchema 字段", async () => {
+      // 创建测试 MCP
+      const mcp = await McpDAO.create({
+        name: "工具测试 MCP",
+        transportType: "sse",
+        url: "http://localhost:3000/sse",
+        userId: adminUser.id,
+      });
+
+      // 创建测试 Forge
+      const forge = await Agent.create({
+        displayName: "工具测试 Forge",
+        userId: normalUser.id,
+      });
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(toolInfoArbitrary, { minLength: 1, maxLength: 5 }),
+          async (tools) => {
+            // 创建带工具的关联
+            const association = await McpForgeDAO.createWithTools(mcp.id, forge.id, tools);
+
+            // 验证工具信息完整性
+            expect(association.tools).toBeDefined();
+            expect(Array.isArray(association.tools)).toBe(true);
+            expect(association.tools.length).toBe(tools.length);
+
+            for (let i = 0; i < tools.length; i++) {
+              const storedTool = association.tools[i];
+              const originalTool = tools[i];
+
+              // 验证必需字段存在
+              expect(storedTool).toHaveProperty("name");
+              expect(storedTool).toHaveProperty("description");
+              expect(storedTool).toHaveProperty("inputSchema");
+
+              // 验证字段值正确
+              expect(storedTool.name).toBe(originalTool.name);
+              expect(storedTool.description).toBe(originalTool.description);
+              expect(storedTool.inputSchema).toEqual(originalTool.inputSchema);
+            }
+
+            // 清理
+            await McpForgeDAO.delete(mcp.id, forge.id);
+          }
+        ),
+        { numRuns: 10 }
+      );
+    });
+
+    it("查询返回的工具信息应与存储时一致", async () => {
+      // 创建测试 MCP
+      const mcp = await McpDAO.create({
+        name: "查询测试 MCP",
+        transportType: "sse",
+        url: "http://localhost:3000/sse",
+        userId: adminUser.id,
+      });
+
+      // 创建测试 Forge
+      const forge = await Agent.create({
+        displayName: "查询测试 Forge",
+        userId: normalUser.id,
+      });
+
+      const testTools: ToolInfo[] = [
+        {
+          name: "get_weather",
+          description: "获取天气信息",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: { type: "string", description: "城市名称" },
+            },
+            required: ["city"],
+          },
+        },
+        {
+          name: "search_web",
+          description: "搜索网页",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "搜索关键词" },
+              limit: { type: "number", description: "结果数量" },
+            },
+            required: ["query"],
+          },
+        },
+      ];
+
+      // 创建关联
+      await McpForgeDAO.createWithTools(mcp.id, forge.id, testTools);
+
+      // 查询关联
+      const associations = await McpForgeDAO.findByForgeId(forge.id);
+      expect(associations.length).toBe(1);
+
+      const storedTools = associations[0].tools;
+      expect(storedTools.length).toBe(2);
+
+      // 验证工具信息一致性
+      for (let i = 0; i < testTools.length; i++) {
+        expect(storedTools[i].name).toBe(testTools[i].name);
+        expect(storedTools[i].description).toBe(testTools[i].description);
+        expect(storedTools[i].inputSchema).toEqual(testTools[i].inputSchema);
+      }
+    });
+
+    it("空工具列表应正确存储", async () => {
+      // 创建测试 MCP
+      const mcp = await McpDAO.create({
+        name: "空工具测试 MCP",
+        transportType: "sse",
+        url: "http://localhost:3000/sse",
+        userId: adminUser.id,
+      });
+
+      // 创建测试 Forge
+      const forge = await Agent.create({
+        displayName: "空工具测试 Forge",
+        userId: normalUser.id,
+      });
+
+      // 创建不带工具的关联
+      await McpForgeDAO.create(mcp.id, forge.id);
+
+      // 查询关联
+      const associations = await McpForgeDAO.findByForgeId(forge.id);
+      expect(associations.length).toBe(1);
+      expect(associations[0].tools).toEqual([]);
     });
   });
 });
