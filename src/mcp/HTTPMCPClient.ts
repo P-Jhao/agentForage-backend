@@ -13,9 +13,13 @@ import type { MCPClientConfig, MCPTool, MCPToolCallResult } from "./types.js";
  * HTTP MCP 客户端
  * 通过 SSE 或 StreamableHTTP 与 MCP Server 通信
  */
+// 心跳检测间隔（毫秒）
+const HEARTBEAT_INTERVAL = 30000; // 30 秒
+
 export class HTTPMCPClient extends MCPClientBase {
   private client: Client | null = null;
   private transport: SSEClientTransport | StreamableHTTPClientTransport | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: MCPClientConfig) {
     super(config);
@@ -45,22 +49,54 @@ export class HTTPMCPClient extends MCPClientBase {
 
     // 监听连接关闭事件
     this.transport!.onclose = () => {
+      this.stopHeartbeat();
       this.handleDisconnect();
     };
 
     // 监听错误事件
     this.transport!.onerror = (error) => {
       console.error(`❌ MCP ${this._config.id} 传输错误:`, error);
+      this.stopHeartbeat();
       this.handleDisconnect();
     };
+
+    // 启动心跳检测（HTTP 是无状态的，需要主动检测连接状态）
+    this.startHeartbeat();
   }
 
   /**
    * 断开连接
    */
   async disconnect(): Promise<void> {
+    this.stopHeartbeat();
     await this.client?.close();
     this._status = "disconnected";
+  }
+
+  /**
+   * 启动心跳检测
+   * 定期调用 ping 检测连接是否存活
+   */
+  private startHeartbeat(): void {
+    this.heartbeatTimer = setInterval(async () => {
+      try {
+        await this.client?.ping();
+      } catch (error) {
+        console.log(`💔 MCP ${this._config.id} (${this._config.name}) 心跳检测失败`);
+        this.stopHeartbeat();
+        this.handleDisconnect();
+      }
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  /**
+   * 停止心跳检测
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
   }
 
   /**

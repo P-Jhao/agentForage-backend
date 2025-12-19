@@ -1,6 +1,6 @@
 /**
  * 任务事件服务
- * 管理 SSE 连接池，推送任务状态变化
+ * 管理 SSE 连接池，推送任务状态变化和 MCP 状态变化
  */
 import type { ServerResponse } from "http";
 
@@ -12,6 +12,16 @@ export interface TaskEvent {
     status?: string;
     updatedAt?: string;
     title?: string;
+  };
+}
+
+// MCP 事件类型
+export interface MCPEvent {
+  type: "mcp:status_change";
+  mcpId: number;
+  data: {
+    status: "connected" | "disconnected" | "closed";
+    name?: string;
   };
 }
 
@@ -115,6 +125,41 @@ class TaskEventService {
       userCount: this.connections.size,
       totalConnections,
     };
+  }
+
+  /**
+   * 广播事件给所有连接的用户
+   * 用于 MCP 状态变化等全局事件
+   */
+  broadcast(event: MCPEvent) {
+    const data = `data: ${JSON.stringify(event)}\n\n`;
+
+    for (const [userId, userConnections] of this.connections) {
+      for (const conn of userConnections) {
+        try {
+          conn.res.write(data);
+        } catch (error) {
+          console.error(`[TaskEventService] 广播失败 (用户 ${userId}):`, error);
+          this.removeConnection(userId, conn.res);
+        }
+      }
+    }
+  }
+
+  /**
+   * 推送 MCP 状态变化（广播给所有用户）
+   */
+  pushMCPStatusChange(
+    mcpId: number,
+    status: "connected" | "disconnected" | "closed",
+    name?: string
+  ) {
+    console.log(`[TaskEventService] 广播 MCP ${mcpId} 状态变化: ${status}`);
+    this.broadcast({
+      type: "mcp:status_change",
+      mcpId,
+      data: { status, name },
+    });
   }
 }
 

@@ -8,6 +8,7 @@ import { HTTPMCPClient } from "./HTTPMCPClient.js";
 import type { MCPClientConfig, MCPClientStatus, MCPTool, MCPToolCallResult } from "./types.js";
 import { MCPConnectionError } from "./types.js";
 import McpDAO from "../dao/mcpDAO.js";
+import TaskEventService from "../service/taskEventService.js";
 
 /**
  * MCP 连接管理器
@@ -97,11 +98,15 @@ class MCPManager {
 
   /**
    * 处理客户端断开连接
-   * 更新数据库状态并清理客户端实例
+   * 更新数据库状态、清理客户端实例、推送 SSE 事件
    * @param mcpId MCP ID
    */
   private async handleClientDisconnect(mcpId: number): Promise<void> {
     console.log(`🔌 MCP ${mcpId} 连接已断开，更新数据库状态...`);
+
+    // 获取 MCP 名称用于推送
+    const client = this.clients.get(mcpId);
+    const mcpName = client?.config.name;
 
     // 从 clients 中移除
     this.clients.delete(mcpId);
@@ -110,6 +115,9 @@ class MCPManager {
     try {
       await McpDAO.updateStatus(mcpId, "disconnected");
       console.log(`✅ MCP ${mcpId} 状态已更新为 disconnected`);
+
+      // 通过 SSE 广播状态变化
+      TaskEventService.pushMCPStatusChange(mcpId, "disconnected", mcpName);
     } catch (error) {
       console.error(`❌ 更新 MCP ${mcpId} 状态失败:`, (error as Error).message);
     }
