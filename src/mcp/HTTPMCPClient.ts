@@ -42,6 +42,17 @@ export class HTTPMCPClient extends MCPClientBase {
   async connect(): Promise<void> {
     await this.client?.connect(this.transport!);
     this._status = "connected";
+
+    // 监听连接关闭事件
+    this.transport!.onclose = () => {
+      this.handleDisconnect();
+    };
+
+    // 监听错误事件
+    this.transport!.onerror = (error) => {
+      console.error(`❌ MCP ${this._config.id} 传输错误:`, error);
+      this.handleDisconnect();
+    };
   }
 
   /**
@@ -56,23 +67,33 @@ export class HTTPMCPClient extends MCPClientBase {
    * 获取工具列表
    */
   async listTools(): Promise<MCPTool[]> {
-    // TODO: 实现获取工具列表逻辑
-    const result = await this.client?.listTools();
-    return (result?.tools as MCPTool[]) || [];
+    try {
+      const result = await this.client?.listTools();
+      return (result?.tools as MCPTool[]) || [];
+    } catch (error) {
+      // 操作失败，可能连接已断开
+      this.handleDisconnect();
+      throw error;
+    }
   }
 
   /**
    * 调用工具
    */
   async callTool(name: string, args?: Record<string, unknown>): Promise<MCPToolCallResult> {
-    // TODO: 实现工具调用逻辑
-    const result = await this.client?.callTool({
-      name,
-      arguments: args,
-    });
-    return {
-      content: (result?.content as MCPToolCallResult["content"]) || [],
-      isError: result?.isError as boolean | undefined,
-    };
+    try {
+      const result = await this.client?.callTool({
+        name,
+        arguments: args,
+      });
+      return {
+        content: (result?.content as MCPToolCallResult["content"]) || [],
+        isError: result?.isError as boolean | undefined,
+      };
+    } catch (error) {
+      // 操作失败，可能连接已断开
+      this.handleDisconnect();
+      throw error;
+    }
   }
 }

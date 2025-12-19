@@ -55,12 +55,18 @@ export interface IMCPClient {
 }
 
 /**
+ * 断开连接回调类型
+ */
+export type OnDisconnectCallback = (mcpId: number) => void;
+
+/**
  * MCP 客户端抽象基类
  * 提供通用的状态管理和配置存储
  */
 export abstract class MCPClientBase implements IMCPClient {
   protected _status: MCPClientStatus = "disconnected";
   protected _config: MCPClientConfig;
+  protected _onDisconnect?: OnDisconnectCallback;
 
   constructor(config: MCPClientConfig) {
     this._config = config;
@@ -76,6 +82,25 @@ export abstract class MCPClientBase implements IMCPClient {
 
   isConnected(): boolean {
     return this._status === "connected";
+  }
+
+  /**
+   * 设置断开连接回调
+   * @param callback 断开时触发的回调函数
+   */
+  setOnDisconnect(callback: OnDisconnectCallback): void {
+    this._onDisconnect = callback;
+  }
+
+  /**
+   * 处理连接断开（子类调用）
+   */
+  protected handleDisconnect(): void {
+    if (this._status === "connected") {
+      this._status = "disconnected";
+      console.log(`⚠️ MCP ${this._config.id} (${this._config.name}) 连接已断开`);
+      this._onDisconnect?.(this._config.id);
+    }
   }
 
   abstract connect(): Promise<void>;

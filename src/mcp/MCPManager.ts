@@ -2,7 +2,7 @@
  * MCP 连接管理器（单例）
  * 管理所有 MCP 连接的生命周期，维护 mcpId → MCPClient 映射
  */
-import { IMCPClient } from "./MCPClient.js";
+import { IMCPClient, MCPClientBase } from "./MCPClient.js";
 import { StdioMCPClient } from "./StdioMCPClient.js";
 import { HTTPMCPClient } from "./HTTPMCPClient.js";
 import type { MCPClientConfig, MCPClientStatus, MCPTool, MCPToolCallResult } from "./types.js";
@@ -79,6 +79,9 @@ class MCPManager {
     }
 
     try {
+      // 设置断开连接回调
+      (client as MCPClientBase).setOnDisconnect(this.handleClientDisconnect.bind(this));
+
       // 连接
       await client.connect();
 
@@ -89,6 +92,26 @@ class MCPManager {
     } catch (error) {
       console.error(`❌ MCP ${mcpId} 连接失败:`, (error as Error).message);
       throw error;
+    }
+  }
+
+  /**
+   * 处理客户端断开连接
+   * 更新数据库状态并清理客户端实例
+   * @param mcpId MCP ID
+   */
+  private async handleClientDisconnect(mcpId: number): Promise<void> {
+    console.log(`🔌 MCP ${mcpId} 连接已断开，更新数据库状态...`);
+
+    // 从 clients 中移除
+    this.clients.delete(mcpId);
+
+    // 更新数据库状态为 disconnected
+    try {
+      await McpDAO.updateStatus(mcpId, "disconnected");
+      console.log(`✅ MCP ${mcpId} 状态已更新为 disconnected`);
+    } catch (error) {
+      console.error(`❌ 更新 MCP ${mcpId} 状态失败:`, (error as Error).message);
     }
   }
 
