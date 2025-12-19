@@ -12,6 +12,7 @@ export { MCPClientBase } from "./MCPClient.js";
 
 // 客户端实现
 export { StdioMCPClient } from "./StdioMCPClient.js";
+export { HTTPMCPClient } from "./HTTPMCPClient.js";
 
 // 连接管理器（单例）
 export { mcpManager } from "./MCPManager.js";

@@ -4,6 +4,7 @@
  */
 import { IMCPClient } from "./MCPClient.js";
 import { StdioMCPClient } from "./StdioMCPClient.js";
+import { HTTPMCPClient } from "./HTTPMCPClient.js";
 import type { MCPClientConfig, MCPClientStatus, MCPTool, MCPToolCallResult } from "./types.js";
 import { MCPConnectionError } from "./types.js";
 import McpDAO from "../dao/mcpDAO.js";
@@ -71,8 +72,8 @@ class MCPManager {
         break;
       case "sse":
       case "streamableHttp":
-        // TODO: 实现 SSE 和 HTTP 客户端
-        throw new MCPConnectionError(`暂不支持 ${config.transportType} 传输类型`, mcpId);
+        client = new HTTPMCPClient(config);
+        break;
       default:
         throw new MCPConnectionError(`未知的传输类型: ${config.transportType}`, mcpId);
     }
