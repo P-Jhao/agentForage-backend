@@ -6,7 +6,15 @@ import type { ServerResponse } from "http";
 
 // SSE 消息类型
 interface SSEChunk {
-  type: "history" | "thinking" | "chat" | "tool" | "error" | "done";
+  type:
+    | "history"
+    | "thinking"
+    | "chat"
+    | "tool"
+    | "tool_call_start"
+    | "tool_call_result"
+    | "error"
+    | "done";
   data?: unknown;
 }
 

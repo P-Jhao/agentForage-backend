@@ -215,8 +215,33 @@ interface SendMessageBody {
 
 // SSE 消息类型
 interface SSEChunk {
-  type: "history" | "thinking" | "chat" | "tool" | "error" | "done";
+  type:
+    | "history"
+    | "thinking"
+    | "chat"
+    | "tool"
+    | "tool_call_start"
+    | "tool_call_result"
+    | "error"
+    | "done";
   data?: unknown;
+}
+
+// 工具调用开始数据（从 Gateway 接收）
+interface ToolCallData {
+  callId: string;
+  toolName: string;
+  mcpId: number;
+  args: Record<string, unknown>;
+}
+
+// 工具调用结果数据（从 Gateway 接收）
+interface ToolResultData {
+  callId: string;
+  toolName: string;
+  success: boolean;
+  result?: string;
+  error?: string;
 }
 
 /**
@@ -328,9 +353,15 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       const history = await MessageDAO.findByConversationId(task.id);
       const chatMessages = history.map((msg: Message) => {
         if (msg.role === "assistant") {
-          // 将段落数组合并为单个字符串
+          // 将段落数组合并为单个字符串（只处理有 content 的段落）
           const segments = msg.getParsedContent() as MessageSegment[];
-          const combinedContent = segments.map((s) => s.content).join("\n");
+          const combinedContent = segments
+            .filter(
+              (s): s is { type: "thinking" | "chat" | "tool" | "error"; content: string } =>
+                s.type !== "tool_call"
+            )
+            .map((s) => s.content)
+            .join("\n");
           return { role: "assistant" as const, content: combinedContent };
         }
         return { role: msg.role as "user" | "system", content: msg.content };
@@ -340,34 +371,121 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       const segments: MessageSegment[] = [];
       let currentSegment: MessageSegment | null = null;
 
+      // 用于追踪工具调用（callId -> ToolCallSegment）
+      const toolCallMap = new Map<
+        string,
+        {
+          callId: string;
+          toolName: string;
+          arguments: Record<string, unknown>;
+          result?: unknown;
+          error?: string;
+          success: boolean;
+        }
+      >();
+
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
       for await (const chunk of ForgeAgentService.stream(task.agentId, chatMessages)) {
-        // 根据 chunk.type 处理不同类型的输出
-        const chunkType = chunk.type as "chat" | "tool" | "thinking";
-        const chunkData = chunk.data as string;
+        const chunkType = chunk.type;
 
-        // 只处理 chat 类型的文本内容
-        if (chunkType === "chat" && chunkData) {
-          if (!currentSegment || currentSegment.type !== chunkType) {
-            // 开始新段落
-            if (currentSegment) {
-              segments.push(currentSegment);
-            }
-            currentSegment = { type: chunkType, content: chunkData };
-          } else {
-            // 拼接到当前段落
-            currentSegment.content += chunkData;
+        // 处理工具调用开始
+        if (chunkType === "tool") {
+          const toolData = chunk.data as ToolCallData;
+
+          // 如果有正在进行的文本段落，先保存
+          if (currentSegment) {
+            segments.push(currentSegment);
+            currentSegment = null;
           }
+
+          // 记录工具调用
+          toolCallMap.set(toolData.callId, {
+            callId: toolData.callId,
+            toolName: toolData.toolName,
+            arguments: toolData.args,
+            success: false, // 初始状态
+          });
+
+          // 推送 tool_call_start 给前端
+          TaskStreamService.write(uuid, {
+            type: "tool_call_start",
+            data: {
+              callId: toolData.callId,
+              toolName: toolData.toolName,
+            },
+          });
+          continue;
         }
 
-        // 通过 TaskStreamService 写入（会同时写入缓冲区和所有订阅者）
-        TaskStreamService.write(uuid, { type: chunkType, data: chunkData });
+        // 处理工具调用结果
+        if (chunkType === "tool_result") {
+          const resultData = chunk.data as ToolResultData;
+
+          // 更新工具调用记录
+          const toolCall = toolCallMap.get(resultData.callId);
+          if (toolCall) {
+            toolCall.success = resultData.success;
+            toolCall.result = resultData.result;
+            toolCall.error = resultData.error;
+          }
+
+          // 推送 tool_call_result 给前端
+          TaskStreamService.write(uuid, {
+            type: "tool_call_result",
+            data: {
+              callId: resultData.callId,
+              toolName: resultData.toolName,
+              success: resultData.success,
+              result: resultData.result,
+              error: resultData.error,
+            },
+          });
+          continue;
+        }
+
+        // 处理 chat 类型的文本内容
+        if (chunkType === "chat") {
+          const chunkData = chunk.data as string;
+          if (chunkData) {
+            if (!currentSegment || currentSegment.type !== "chat") {
+              // 开始新段落
+              if (currentSegment) {
+                segments.push(currentSegment);
+              }
+              currentSegment = { type: "chat", content: chunkData };
+            } else {
+              // 拼接到当前段落
+              currentSegment.content += chunkData;
+            }
+          }
+
+          // 通过 TaskStreamService 写入
+          TaskStreamService.write(uuid, { type: "chat", data: chunkData });
+          continue;
+        }
+
+        // 处理其他类型（thinking, error 等）
+        const chunkData = chunk.data as string;
+        TaskStreamService.write(uuid, { type: chunkType as SSEChunk["type"], data: chunkData });
       }
 
-      // 保存最后一个段落
+      // 保存最后一个文本段落
       if (currentSegment) {
         segments.push(currentSegment);
+      }
+
+      // 将工具调用记录转换为 ToolCallSegment 并添加到 segments
+      for (const toolCall of toolCallMap.values()) {
+        segments.push({
+          type: "tool_call",
+          callId: toolCall.callId,
+          toolName: toolCall.toolName,
+          arguments: toolCall.arguments,
+          result: toolCall.result,
+          error: toolCall.error,
+          success: toolCall.success,
+        });
       }
 
       // 保存 assistant 消息到数据库

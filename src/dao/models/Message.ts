@@ -13,13 +13,27 @@ import { sequelize } from "../../config/database.js";
 export type MessageRole = "user" | "assistant" | "system";
 
 // 消息段落类型（LLM 输出的不同阶段）
-export type MessageType = "thinking" | "chat" | "tool" | "error";
+export type MessageType = "thinking" | "chat" | "tool" | "error" | "tool_call";
 
-// 消息段落（assistant 消息的数组元素）
-export interface MessageSegment {
-  type: MessageType;
+// 基础消息段落（thinking/chat/tool/error）
+export interface BaseMessageSegment {
+  type: "thinking" | "chat" | "tool" | "error";
   content: string;
 }
+
+// 工具调用段落（tool_call）
+export interface ToolCallSegment {
+  type: "tool_call";
+  callId: string; // 工具调用唯一标识
+  toolName: string; // 工具名称
+  arguments: Record<string, unknown>; // 调用参数
+  result?: unknown; // 执行结果
+  error?: string; // 错误信息（失败时）
+  success: boolean; // 是否成功
+}
+
+// 消息段落（assistant 消息的数组元素）
+export type MessageSegment = BaseMessageSegment | ToolCallSegment;
 
 interface MessageAttributes {
   id: number;

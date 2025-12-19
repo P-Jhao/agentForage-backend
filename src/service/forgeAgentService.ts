@@ -82,14 +82,30 @@ class ForgeAgentService {
     }> = [];
 
     // 如果有 forgeId，获取 Forge 信息和工具
+    console.log(`[ForgeAgentService] 收到 forgeId: ${forgeId}`);
     if (forgeId) {
       const forge = await ForgeDAO.findById(forgeId);
+      console.log(`[ForgeAgentService] 查询到 Forge: ${forge ? forge.displayName : "null"}`);
       if (forge) {
         systemPrompt = forge.systemPrompt || undefined;
 
         // 获取 Forge 关联的工具
         const forgeTools = await McpForgeDAO.getForgeTools(forgeId);
         console.log(`[ForgeAgentService] Forge ${forgeId} 关联工具数: ${forgeTools.length}`);
+        console.log(
+          `[ForgeAgentService] 工具列表:`,
+          forgeTools.map((t) => t.name)
+        );
+
+        // 调试：直接查询 mcp_forge 表
+        const rawAssociations = await McpForgeDAO.findByForgeId(forgeId);
+        console.log(`[ForgeAgentService] mcp_forge 原始关联数: ${rawAssociations.length}`);
+        for (const assoc of rawAssociations) {
+          console.log(
+            `[ForgeAgentService] - mcpId: ${assoc.mcpId}, tools 数量: ${assoc.tools?.length || 0}`
+          );
+          console.log(`[ForgeAgentService]   tools:`, JSON.stringify(assoc.tools));
+        }
 
         tools = forgeTools.map((t) => ({
           name: t.name,
