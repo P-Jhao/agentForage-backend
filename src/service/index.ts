@@ -7,4 +7,5 @@ export { default as ChatService } from "./chatService.js";
 export { default as DocumentService } from "./documentService.js";
 export { default as TaskService } from "./taskService.js";
 export { default as McpService } from "./mcpService.js";
+export { default as ForgeAgentService } from "./forgeAgentService.js";
 export { truncateTitle } from "./taskService.js";

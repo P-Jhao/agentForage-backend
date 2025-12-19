@@ -7,14 +7,10 @@ import { tokenAuth } from "../middleware/index.js";
 import TaskService from "../service/taskService.js";
 import TaskEventService from "../service/taskEventService.js";
 import TaskStreamService from "../service/taskStreamService.js";
+import ForgeAgentService from "../service/forgeAgentService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import type { MessageSegment } from "../dao/models/Message.js";
 import Message from "../dao/models/Message.js";
-
-// 动态导入 gateway
-const loadGateway = async () => {
-  return await import("agentforge-gateway");
-};
 
 const router = new Router();
 
@@ -344,25 +340,29 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       const segments: MessageSegment[] = [];
       let currentSegment: MessageSegment | null = null;
 
-      // 调用 Gateway 流式获取 LLM 回复
-      const { chatService } = await loadGateway();
-      for await (const chunk of chatService.stream({ messages: chatMessages })) {
-        // 当前简化处理：所有输出都当作 chat 类型
-        const chunkType = "chat";
+      // 调用 ForgeAgentService 流式获取 Agent 回复
+      // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
+      for await (const chunk of ForgeAgentService.stream(task.agentId, chatMessages)) {
+        // 根据 chunk.type 处理不同类型的输出
+        const chunkType = chunk.type as "chat" | "tool" | "thinking";
+        const chunkData = chunk.data as string;
 
-        if (!currentSegment || currentSegment.type !== chunkType) {
-          // 开始新段落
-          if (currentSegment) {
-            segments.push(currentSegment);
+        // 只处理 chat 类型的文本内容
+        if (chunkType === "chat" && chunkData) {
+          if (!currentSegment || currentSegment.type !== chunkType) {
+            // 开始新段落
+            if (currentSegment) {
+              segments.push(currentSegment);
+            }
+            currentSegment = { type: chunkType, content: chunkData };
+          } else {
+            // 拼接到当前段落
+            currentSegment.content += chunkData;
           }
-          currentSegment = { type: chunkType, content: chunk.content };
-        } else {
-          // 拼接到当前段落
-          currentSegment.content += chunk.content;
         }
 
         // 通过 TaskStreamService 写入（会同时写入缓冲区和所有订阅者）
-        TaskStreamService.write(uuid, { type: chunkType, data: chunk.content });
+        TaskStreamService.write(uuid, { type: chunkType, data: chunkData });
       }
 
       // 保存最后一个段落
