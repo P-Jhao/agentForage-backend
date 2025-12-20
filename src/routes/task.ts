@@ -215,28 +215,19 @@ interface SendMessageBody {
 
 // SSE 消息类型
 interface SSEChunk {
-  type:
-    | "history"
-    | "thinking"
-    | "chat"
-    | "tool"
-    | "tool_call_start"
-    | "tool_call_result"
-    | "error"
-    | "done";
+  type: "history" | "thinking" | "chat" | "tool_call_start" | "tool_call_result" | "error" | "done";
   data?: unknown;
 }
 
 // 工具调用开始数据（从 Gateway 接收）
-interface ToolCallData {
+interface ToolCallStartData {
   callId: string;
   toolName: string;
-  mcpId: number;
   args: Record<string, unknown>;
 }
 
 // 工具调用结果数据（从 Gateway 接收）
-interface ToolResultData {
+interface ToolCallResultData {
   callId: string;
   toolName: string;
   success: boolean;
@@ -389,9 +380,9 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       for await (const chunk of ForgeAgentService.stream(task.agentId, chatMessages)) {
         const chunkType = chunk.type;
 
-        // 处理工具调用开始
-        if (chunkType === "tool") {
-          const toolData = chunk.data as ToolCallData;
+        // 处理工具调用开始（Gateway 发出 tool_call_start）
+        if (chunkType === "tool_call_start") {
+          const toolData = chunk.data as ToolCallStartData;
 
           // 如果有正在进行的文本段落，先保存
           if (currentSegment) {
@@ -418,9 +409,9 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           continue;
         }
 
-        // 处理工具调用结果
-        if (chunkType === "tool_result") {
-          const resultData = chunk.data as ToolResultData;
+        // 处理工具调用结果（Gateway 发出 tool_call_result）
+        if (chunkType === "tool_call_result") {
+          const resultData = chunk.data as ToolCallResultData;
 
           // 更新工具调用记录
           const toolCall = toolCallMap.get(resultData.callId);
