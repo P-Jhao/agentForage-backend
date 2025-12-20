@@ -67,11 +67,13 @@ class ForgeAgentService {
    * @param forgeId Forge ID（可选，为空时无工具和系统提示词）
    * @param messages 消息历史
    * @param model 模型选择（可选）
+   * @param enableThinking 是否启用深度思考（默认 true）
    */
   async *stream(
     forgeId: number | null | undefined,
     messages: AgentMessage[],
-    model?: "qwen" | "deepseek"
+    model?: "qwen" | "deepseek",
+    enableThinking: boolean = true
   ): AsyncGenerator<AgentStreamChunk> {
     let systemPrompt: string | undefined;
     let tools: Array<{
@@ -128,6 +130,7 @@ class ForgeAgentService {
       messages,
       tools,
       toolExecutor: tools.length > 0 ? toolExecutor : undefined,
+      enableThinking,
     });
   }
 

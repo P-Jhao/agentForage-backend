@@ -209,6 +209,7 @@ router.delete("/:id", tokenAuth(), async (ctx) => {
 interface SendMessageBody {
   content?: string; // 用户消息内容（发送新消息时必填）
   loadHistory?: boolean; // 是否加载历史消息
+  enableThinking?: boolean; // 是否启用深度思考（默认 true）
 }
 
 // SSE 消息类型
@@ -242,7 +243,7 @@ interface ToolCallResultData {
 router.post("/:id/message", tokenAuth(), async (ctx) => {
   const userId = ctx.state.user.id as number;
   const { id: uuid } = ctx.params;
-  const { content, loadHistory } = ctx.request.body as SendMessageBody;
+  const { content, loadHistory, enableThinking = true } = ctx.request.body as SendMessageBody;
 
   // 权限检查
   const task = await TaskService.getTask(uuid);
@@ -372,10 +373,17 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 当前正在拼接的文本段落（用于流式输出时合并同类型内容）
       let currentTextContent = "";
+      // 当前正在拼接的 thinking 段落
+      let currentThinkingContent = "";
 
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
-      for await (const chunk of ForgeAgentService.stream(task.agentId, chatMessages)) {
+      for await (const chunk of ForgeAgentService.stream(
+        task.agentId,
+        chatMessages,
+        undefined,
+        enableThinking
+      )) {
         const chunkType = chunk.type;
 
         // 处理工具调用开始（Gateway 发出 tool_call_start）
@@ -391,6 +399,17 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
               content: currentTextContent,
             });
             currentTextContent = "";
+          }
+
+          // 如果有正在进行的 thinking 段落，先保存到数据库
+          if (currentThinkingContent) {
+            await MessageDAO.createAssistantTextMessage({
+              conversationId: task.id,
+              role: "assistant",
+              type: "thinking",
+              content: currentThinkingContent,
+            });
+            currentThinkingContent = "";
           }
 
           // 创建工具调用消息（初始状态）
@@ -441,6 +460,16 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         if (chunkType === "chat") {
           const chunkData = chunk.data as string;
           if (chunkData) {
+            // 如果有正在进行的 thinking 段落，先保存到数据库
+            if (currentThinkingContent) {
+              await MessageDAO.createAssistantTextMessage({
+                conversationId: task.id,
+                role: "assistant",
+                type: "thinking",
+                content: currentThinkingContent,
+              });
+              currentThinkingContent = "";
+            }
             currentTextContent += chunkData;
           }
 
@@ -449,9 +478,32 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           continue;
         }
 
-        // 处理其他类型（thinking, error 等）
+        // 处理 thinking 类型的文本内容
+        if (chunkType === "thinking") {
+          const chunkData = chunk.data as string;
+          if (chunkData) {
+            // 累积 thinking 内容，不立即保存
+            currentThinkingContent += chunkData;
+          }
+
+          // 通过 TaskStreamService 写入
+          TaskStreamService.write(uuid, { type: "thinking", data: chunkData });
+          continue;
+        }
+
+        // 处理其他类型（error 等）
         const chunkData = chunk.data as string;
         TaskStreamService.write(uuid, { type: chunkType as SSEChunk["type"], data: chunkData });
+      }
+
+      // 保存最后一个 thinking 段落
+      if (currentThinkingContent) {
+        await MessageDAO.createAssistantTextMessage({
+          conversationId: task.id,
+          role: "assistant",
+          type: "thinking",
+          content: currentThinkingContent,
+        });
       }
 
       // 保存最后一个文本段落
