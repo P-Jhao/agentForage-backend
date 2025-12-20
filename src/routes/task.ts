@@ -331,10 +331,12 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       });
 
       // 获取历史消息构建上下文（用于 LLM）
-      const history = await MessageDAO.findByConversationId(task.id);
+      // 使用扁平格式，已解析 JSON 字段
+      const history = await MessageDAO.findFlatByConversationId(task.id);
       const chatMessages: { role: "user" | "assistant" | "system"; content: string }[] = [];
 
       // 将消息转换为 LLM 上下文格式
+      // 需要包含工具调用信息，让 AI 理解之前做过什么操作
       let currentAssistantContent = "";
       let lastRole: string | null = null;
 
@@ -348,8 +350,16 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           chatMessages.push({ role: "user", content: msg.content });
           lastRole = "user";
         } else if (msg.role === "assistant") {
-          // 只收集文本内容（chat/thinking/error），跳过 tool_call
-          if (msg.type !== "tool_call" && msg.content) {
+          // 收集所有类型的内容，包括工具调用
+          if (msg.type === "tool_call") {
+            // 将工具调用信息转换为文本描述，让 AI 知道之前调用过什么工具
+            const toolName = msg.toolName || "unknown";
+            const toolArgs = msg.arguments ? JSON.stringify(msg.arguments) : "{}";
+            const toolResult = msg.result ? JSON.stringify(msg.result) : "无结果";
+            const toolInfo = `[调用工具 ${toolName}，参数: ${toolArgs}，结果: ${toolResult}]`;
+            currentAssistantContent += (currentAssistantContent ? "\n" : "") + toolInfo;
+          } else if (msg.content) {
+            // 文本内容（chat/thinking/error）
             currentAssistantContent += (currentAssistantContent ? "\n" : "") + msg.content;
           }
           lastRole = "assistant";
