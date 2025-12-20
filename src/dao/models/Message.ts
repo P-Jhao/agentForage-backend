@@ -2,9 +2,11 @@
  * 消息模型
  * 存储对话中的单条消息记录
  *
- * 存储格式：
- * - user 消息：content 为纯字符串
- * - assistant 消息：content 为 JSON 数组 [{type, content}, ...]
+ * 新存储格式（每段一条记录）：
+ * - user 消息：type='chat', content 为纯字符串
+ * - assistant 消息：每个段落单独存储，按 createdAt 排序
+ *   - type='chat'/'thinking'/'error': content 为文本内容
+ *   - type='tool_call': 使用 toolName/callId/arguments/result/success 字段
  */
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../../config/database.js";
@@ -12,37 +14,47 @@ import { sequelize } from "../../config/database.js";
 // 消息角色类型
 export type MessageRole = "user" | "assistant" | "system";
 
-// 消息段落类型（LLM 输出的不同阶段）
-export type MessageType = "thinking" | "chat" | "tool" | "error" | "tool_call";
+// 消息类型（每条消息只有一个类型）
+export type MessageType = "chat" | "thinking" | "tool_call" | "error";
 
-// 基础消息段落（thinking/chat/tool/error）
+// 基础消息段落（用于前端展示）
 export interface BaseMessageSegment {
   type: "thinking" | "chat" | "tool" | "error";
   content: string;
 }
 
-// 工具调用段落（tool_call）
+// 工具调用段落（用于前端展示）
 export interface ToolCallSegment {
   type: "tool_call";
-  callId: string; // 工具调用唯一标识
-  toolName: string; // 工具名称
-  arguments: Record<string, unknown>; // 调用参数
-  result?: unknown; // 执行结果
-  error?: string; // 错误信息（失败时）
-  success: boolean; // 是否成功
+  callId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  result?: unknown;
+  error?: string;
+  success: boolean;
 }
 
-// 消息段落（assistant 消息的数组元素）
+// 消息段落（前端展示用）
 export type MessageSegment = BaseMessageSegment | ToolCallSegment;
 
 interface MessageAttributes {
   id: number;
   conversationId: number;
   role: MessageRole;
-  content: string; // user: 纯字符串; assistant: JSON 数组字符串
+  type: MessageType;
+  content: string;
+  // 工具调用专用字段
+  callId: string | null;
+  toolName: string | null;
+  arguments: string | null; // JSON 字符串
+  result: string | null; // JSON 字符串
+  success: boolean | null;
 }
 
-type MessageCreationAttributes = Optional<MessageAttributes, "id">;
+type MessageCreationAttributes = Optional<
+  MessageAttributes,
+  "id" | "callId" | "toolName" | "arguments" | "result" | "success"
+>;
 
 class Message
   extends Model<MessageAttributes, MessageCreationAttributes>
@@ -51,24 +63,34 @@ class Message
   declare id: number;
   declare conversationId: number;
   declare role: MessageRole;
+  declare type: MessageType;
   declare content: string;
+  declare callId: string | null;
+  declare toolName: string | null;
+  declare arguments: string | null;
+  declare result: string | null;
+  declare success: boolean | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
   /**
-   * 获取解析后的内容
-   * user 消息返回字符串，assistant 消息返回段落数组
+   * 转换为前端展示用的段落格式
    */
-  getParsedContent(): string | MessageSegment[] {
-    if (this.role === "assistant") {
-      try {
-        return JSON.parse(this.content) as MessageSegment[];
-      } catch {
-        // 兼容旧数据，返回单个 chat 段落
-        return [{ type: "chat", content: this.content }];
-      }
+  toSegment(): MessageSegment {
+    if (this.type === "tool_call") {
+      return {
+        type: "tool_call",
+        callId: this.callId || "",
+        toolName: this.toolName || "",
+        arguments: this.arguments ? JSON.parse(this.arguments) : {},
+        result: this.result ? JSON.parse(this.result) : undefined,
+        success: this.success ?? false,
+      };
     }
-    return this.content;
+    return {
+      type: this.type as "thinking" | "chat" | "error",
+      content: this.content,
+    };
   }
 }
 
@@ -87,12 +109,44 @@ Message.init(
     role: {
       type: DataTypes.ENUM("user", "assistant", "system"),
       allowNull: false,
-      comment: "消息角色：user-用户, assistant-AI助手, system-系统",
+      comment: "消息角色",
+    },
+    type: {
+      type: DataTypes.ENUM("chat", "thinking", "tool_call", "error"),
+      allowNull: false,
+      defaultValue: "chat",
+      comment: "消息类型",
     },
     content: {
       type: DataTypes.TEXT,
       allowNull: false,
-      comment: "消息内容：user 为纯字符串，assistant 为 JSON 数组",
+      defaultValue: "",
+      comment: "文本内容（chat/thinking/error 类型使用）",
+    },
+    callId: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      comment: "工具调用 ID（tool_call 类型使用）",
+    },
+    toolName: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+      comment: "工具名称（tool_call 类型使用）",
+    },
+    arguments: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "工具调用参数 JSON（tool_call 类型使用）",
+    },
+    result: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "工具执行结果 JSON（tool_call 类型使用）",
+    },
+    success: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      comment: "工具执行是否成功（tool_call 类型使用）",
     },
   },
   {

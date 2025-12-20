@@ -1,64 +1,140 @@
 /**
  * 消息数据访问对象
  *
- * 存储格式：
- * - user 消息：content 为纯字符串
- * - assistant 消息：content 为 JSON 数组 [{type, content}, ...]
+ * 新存储格式（每段一条记录）：
+ * - user 消息：type='chat', content 为纯字符串
+ * - assistant 消息：每个段落单独存储
  */
 import { Message } from "./models/index.js";
-import type { MessageRole, MessageSegment } from "./models/Message.js";
+import type { MessageRole, MessageType } from "./models/Message.js";
 
-// 创建消息参数
-interface CreateMessageData {
+// 创建文本消息参数
+interface CreateTextMessageData {
   conversationId: number;
   role: MessageRole;
-  content: string; // user: 纯字符串; assistant: JSON 字符串
+  type: "chat" | "thinking" | "error";
+  content: string;
 }
 
-// 创建 assistant 消息参数
-interface CreateAssistantMessageData {
+// 创建工具调用消息参数
+interface CreateToolCallMessageData {
   conversationId: number;
-  segments: MessageSegment[];
+  callId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+}
+
+// 更新工具调用结果参数
+interface UpdateToolCallResultData {
+  success: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+// 扁平消息格式（用于前端展示）
+export interface FlatMessage {
+  id: number;
+  role: MessageRole;
+  type: MessageType;
+  content: string;
+  // 工具调用专用字段
+  callId?: string;
+  toolName?: string;
+  arguments?: Record<string, unknown>;
+  result?: unknown;
+  success?: boolean;
+  createdAt: Date;
 }
 
 class MessageDAO {
   /**
-   * 创建消息
-   */
-  static async create(data: CreateMessageData) {
-    return await Message.create(data);
-  }
-
-  /**
    * 创建用户消息
    */
   static async createUserMessage(conversationId: number, content: string) {
-    return await this.create({
+    return await Message.create({
       conversationId,
       role: "user",
+      type: "chat",
       content,
     });
   }
 
   /**
-   * 创建 assistant 消息
-   * 将段落数组序列化为 JSON 字符串存储
+   * 创建 assistant 文本消息（chat/thinking/error）
    */
-  static async createAssistantMessage(data: CreateAssistantMessageData) {
-    return await this.create({
+  static async createAssistantTextMessage(data: CreateTextMessageData) {
+    return await Message.create({
       conversationId: data.conversationId,
       role: "assistant",
-      content: JSON.stringify(data.segments),
+      type: data.type,
+      content: data.content,
     });
   }
 
   /**
-   * 按会话 ID 查询消息
+   * 创建 assistant 工具调用消息
+   * 初始状态：success=false，等待结果更新
+   */
+  static async createToolCallMessage(data: CreateToolCallMessageData) {
+    return await Message.create({
+      conversationId: data.conversationId,
+      role: "assistant",
+      type: "tool_call",
+      content: "",
+      callId: data.callId,
+      toolName: data.toolName,
+      arguments: JSON.stringify(data.arguments),
+      success: false,
+    });
+  }
+
+  /**
+   * 更新工具调用结果
+   */
+  static async updateToolCallResult(callId: string, data: UpdateToolCallResultData) {
+    return await Message.update(
+      {
+        success: data.success,
+        result: data.result !== undefined ? JSON.stringify(data.result) : null,
+      },
+      { where: { callId } }
+    );
+  }
+
+  /**
+   * 按会话 ID 查询消息（原始记录）
    */
   static async findByConversationId(conversationId: number) {
     return await Message.findAll({
       where: { conversationId },
       order: [["createdAt", "ASC"]],
+    });
+  }
+
+  /**
+   * 按会话 ID 查询消息（扁平格式，用于前端展示）
+   */
+  static async findFlatByConversationId(conversationId: number): Promise<FlatMessage[]> {
+    const messages = await this.findByConversationId(conversationId);
+    return messages.map((msg) => {
+      const base: FlatMessage = {
+        id: msg.id,
+        role: msg.role,
+        type: msg.type,
+        content: msg.content,
+        createdAt: msg.createdAt,
+      };
+
+      // 工具调用消息添加额外字段
+      if (msg.type === "tool_call") {
+        base.callId = msg.callId || undefined;
+        base.toolName = msg.toolName || undefined;
+        base.arguments = msg.arguments ? JSON.parse(msg.arguments) : undefined;
+        base.result = msg.result ? JSON.parse(msg.result) : undefined;
+        base.success = msg.success ?? undefined;
+      }
+
+      return base;
     });
   }
 

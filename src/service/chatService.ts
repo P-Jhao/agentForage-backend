@@ -32,11 +32,7 @@ class ChatService {
     }
 
     // 保存用户消息
-    await MessageDAO.create({
-      conversationId: convId,
-      role: "user",
-      content: message,
-    });
+    await MessageDAO.createUserMessage(convId, message);
 
     // 获取历史消息构建上下文
     const history = await MessageDAO.findByConversationId(convId);
@@ -58,9 +54,10 @@ class ChatService {
     const aiResponse = result.data.content;
 
     // 保存 AI 回复
-    await MessageDAO.create({
+    await MessageDAO.createAssistantTextMessage({
       conversationId: convId,
       role: "assistant",
+      type: "chat",
       content: aiResponse,
     });
 

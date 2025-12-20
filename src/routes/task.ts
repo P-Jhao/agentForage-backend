@@ -9,8 +9,6 @@ import TaskEventService from "../service/taskEventService.js";
 import TaskStreamService from "../service/taskStreamService.js";
 import ForgeAgentService from "../service/forgeAgentService.js";
 import MessageDAO from "../dao/messageDAO.js";
-import type { MessageSegment } from "../dao/models/Message.js";
-import Message from "../dao/models/Message.js";
 
 const router = new Router();
 
@@ -279,19 +277,11 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
   try {
     if (loadHistory) {
-      // 加载历史消息
-      const messages = await MessageDAO.findByConversationId(task.id);
-
-      // 转换消息格式，解析 assistant 消息的 JSON content
-      const formattedMessages = messages.map((msg: Message) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.getParsedContent(),
-        createdAt: msg.createdAt,
-      }));
+      // 加载历史消息（使用扁平格式）
+      const messages = await MessageDAO.findFlatByConversationId(task.id);
 
       // 发送历史消息
-      write({ type: "history", data: formattedMessages });
+      write({ type: "history", data: messages });
 
       // 检查任务是否正在运行，如果是则订阅流
       if (task.status === "running" && TaskStreamService.isRunning(uuid)) {
@@ -340,40 +330,38 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         TaskStreamService.unsubscribe(uuid, res);
       });
 
-      // 获取历史消息构建上下文
+      // 获取历史消息构建上下文（用于 LLM）
       const history = await MessageDAO.findByConversationId(task.id);
-      const chatMessages = history.map((msg: Message) => {
-        if (msg.role === "assistant") {
-          // 将段落数组合并为单个字符串（只处理有 content 的段落）
-          const segments = msg.getParsedContent() as MessageSegment[];
-          const combinedContent = segments
-            .filter(
-              (s): s is { type: "thinking" | "chat" | "tool" | "error"; content: string } =>
-                s.type !== "tool_call"
-            )
-            .map((s) => s.content)
-            .join("\n");
-          return { role: "assistant" as const, content: combinedContent };
-        }
-        return { role: msg.role as "user" | "system", content: msg.content };
-      });
+      const chatMessages: { role: "user" | "assistant" | "system"; content: string }[] = [];
 
-      // 用于收集 LLM 回复的段落
-      const segments: MessageSegment[] = [];
-      let currentSegment: MessageSegment | null = null;
+      // 将消息转换为 LLM 上下文格式
+      let currentAssistantContent = "";
+      let lastRole: string | null = null;
 
-      // 用于追踪工具调用（callId -> ToolCallSegment）
-      const toolCallMap = new Map<
-        string,
-        {
-          callId: string;
-          toolName: string;
-          arguments: Record<string, unknown>;
-          result?: unknown;
-          error?: string;
-          success: boolean;
+      for (const msg of history) {
+        if (msg.role === "user") {
+          // 保存之前的 assistant 内容
+          if (lastRole === "assistant" && currentAssistantContent) {
+            chatMessages.push({ role: "assistant", content: currentAssistantContent });
+            currentAssistantContent = "";
+          }
+          chatMessages.push({ role: "user", content: msg.content });
+          lastRole = "user";
+        } else if (msg.role === "assistant") {
+          // 只收集文本内容（chat/thinking/error），跳过 tool_call
+          if (msg.type !== "tool_call" && msg.content) {
+            currentAssistantContent += (currentAssistantContent ? "\n" : "") + msg.content;
+          }
+          lastRole = "assistant";
         }
-      >();
+      }
+      // 保存最后的 assistant 内容
+      if (lastRole === "assistant" && currentAssistantContent) {
+        chatMessages.push({ role: "assistant", content: currentAssistantContent });
+      }
+
+      // 当前正在拼接的文本段落（用于流式输出时合并同类型内容）
+      let currentTextContent = "";
 
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
@@ -384,18 +372,23 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         if (chunkType === "tool_call_start") {
           const toolData = chunk.data as ToolCallStartData;
 
-          // 如果有正在进行的文本段落，先保存
-          if (currentSegment) {
-            segments.push(currentSegment);
-            currentSegment = null;
+          // 如果有正在进行的文本段落，先保存到数据库
+          if (currentTextContent) {
+            await MessageDAO.createAssistantTextMessage({
+              conversationId: task.id,
+              role: "assistant",
+              type: "chat",
+              content: currentTextContent,
+            });
+            currentTextContent = "";
           }
 
-          // 记录工具调用
-          toolCallMap.set(toolData.callId, {
+          // 创建工具调用消息（初始状态）
+          await MessageDAO.createToolCallMessage({
+            conversationId: task.id,
             callId: toolData.callId,
             toolName: toolData.toolName,
             arguments: toolData.args,
-            success: false, // 初始状态
           });
 
           // 推送 tool_call_start 给前端
@@ -413,13 +406,12 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         if (chunkType === "tool_call_result") {
           const resultData = chunk.data as ToolCallResultData;
 
-          // 更新工具调用记录
-          const toolCall = toolCallMap.get(resultData.callId);
-          if (toolCall) {
-            toolCall.success = resultData.success;
-            toolCall.result = resultData.result;
-            toolCall.error = resultData.error;
-          }
+          // 更新工具调用结果
+          await MessageDAO.updateToolCallResult(resultData.callId, {
+            success: resultData.success,
+            result: resultData.result,
+            error: resultData.error,
+          });
 
           // 推送 tool_call_result 给前端
           TaskStreamService.write(uuid, {
@@ -439,16 +431,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         if (chunkType === "chat") {
           const chunkData = chunk.data as string;
           if (chunkData) {
-            if (!currentSegment || currentSegment.type !== "chat") {
-              // 开始新段落
-              if (currentSegment) {
-                segments.push(currentSegment);
-              }
-              currentSegment = { type: "chat", content: chunkData };
-            } else {
-              // 拼接到当前段落
-              currentSegment.content += chunkData;
-            }
+            currentTextContent += chunkData;
           }
 
           // 通过 TaskStreamService 写入
@@ -462,28 +445,12 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       }
 
       // 保存最后一个文本段落
-      if (currentSegment) {
-        segments.push(currentSegment);
-      }
-
-      // 将工具调用记录转换为 ToolCallSegment 并添加到 segments
-      for (const toolCall of toolCallMap.values()) {
-        segments.push({
-          type: "tool_call",
-          callId: toolCall.callId,
-          toolName: toolCall.toolName,
-          arguments: toolCall.arguments,
-          result: toolCall.result,
-          error: toolCall.error,
-          success: toolCall.success,
-        });
-      }
-
-      // 保存 assistant 消息到数据库
-      if (segments.length > 0) {
-        await MessageDAO.createAssistantMessage({
+      if (currentTextContent) {
+        await MessageDAO.createAssistantTextMessage({
           conversationId: task.id,
-          segments,
+          role: "assistant",
+          type: "chat",
+          content: currentTextContent,
         });
       }
 
