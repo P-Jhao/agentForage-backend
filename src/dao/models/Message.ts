@@ -49,11 +49,13 @@ interface MessageAttributes {
   arguments: string | null; // JSON 字符串
   result: string | null; // JSON 字符串
   success: boolean | null;
+  // 用户上传的文件信息（JSON 字符串）
+  files: string | null;
 }
 
 type MessageCreationAttributes = Optional<
   MessageAttributes,
-  "id" | "callId" | "toolName" | "arguments" | "result" | "success"
+  "id" | "callId" | "toolName" | "arguments" | "result" | "success" | "files"
 >;
 
 class Message
@@ -70,6 +72,7 @@ class Message
   declare arguments: string | null;
   declare result: string | null;
   declare success: boolean | null;
+  declare files: string | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -147,6 +150,11 @@ Message.init(
       type: DataTypes.BOOLEAN,
       allowNull: true,
       comment: "工具执行是否成功（tool_call 类型使用）",
+    },
+    files: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "用户上传的文件信息 JSON（user 消息使用）",
     },
   },
   {

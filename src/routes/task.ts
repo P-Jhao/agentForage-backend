@@ -209,7 +209,13 @@ router.delete("/:id", tokenAuth(), async (ctx) => {
 interface SendMessageBody {
   content?: string; // 用户消息内容（发送新消息时必填）
   loadHistory?: boolean; // 是否加载历史消息
-  enableThinking?: boolean; // 是否启用深度思考（默认 true）
+  enableThinking?: boolean; // 是否启用深度思考（默认 false）
+  files?: Array<{
+    filePath: string;
+    originalName: string;
+    size: number;
+    url: string;
+  }>; // 用户上传的文件信息列表
 }
 
 // SSE 消息类型
@@ -252,7 +258,16 @@ interface ToolCallResultData {
 router.post("/:id/message", tokenAuth(), async (ctx) => {
   const userId = ctx.state.user.id as number;
   const { id: uuid } = ctx.params;
-  const { content, loadHistory, enableThinking = false } = ctx.request.body as SendMessageBody;
+  const {
+    content,
+    loadHistory,
+    enableThinking = false,
+    files,
+  } = ctx.request.body as SendMessageBody;
+
+  // 调试日志
+  console.log("[task.ts] 收到请求体:", JSON.stringify(ctx.request.body, null, 2));
+  console.log("[task.ts] files:", files);
 
   // 权限检查
   const task = await TaskService.getTask(uuid);
@@ -320,8 +335,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         return;
       }
 
-      // 保存用户消息
-      await MessageDAO.createUserMessage(task.id, content);
+      // 保存用户消息（包含文件信息）
+      await MessageDAO.createUserMessage(task.id, content, files);
 
       // 更新任务状态为 running
       await TaskService.updateTaskStatus(uuid, "running");
@@ -387,13 +402,18 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 当前正在拼接的 summary 段落
       let currentSummaryContent = "";
 
+      // 构建内置工具激活上下文（从文件信息中提取路径）
+      const filePaths = files?.map((f) => f.filePath) || [];
+      const builtinContext = filePaths.length > 0 ? { files: filePaths } : undefined;
+
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
       for await (const chunk of ForgeAgentService.stream(
         task.agentId,
         chatMessages,
         undefined,
-        enableThinking
+        enableThinking,
+        builtinContext
       )) {
         const chunkType = chunk.type;
 

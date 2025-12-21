@@ -32,6 +32,14 @@ interface UpdateToolCallResultData {
   arguments?: Record<string, unknown>; // 工具 LLM 决定的参数
 }
 
+// 用户上传的文件信息
+export interface UploadedFileInfo {
+  filePath: string;
+  originalName: string;
+  size: number;
+  url: string;
+}
+
 // 扁平消息格式（用于前端展示）
 export interface FlatMessage {
   id: number;
@@ -44,19 +52,29 @@ export interface FlatMessage {
   arguments?: Record<string, unknown>;
   result?: unknown;
   success?: boolean;
+  // 用户上传的文件
+  files?: UploadedFileInfo[];
   createdAt: Date;
 }
 
 class MessageDAO {
   /**
    * 创建用户消息
+   * @param conversationId 会话 ID
+   * @param content 消息内容
+   * @param files 用户上传的文件信息（可选）
    */
-  static async createUserMessage(conversationId: number, content: string) {
+  static async createUserMessage(
+    conversationId: number,
+    content: string,
+    files?: UploadedFileInfo[]
+  ) {
     return await Message.create({
       conversationId,
       role: "user",
       type: "chat",
       content,
+      files: files && files.length > 0 ? JSON.stringify(files) : null,
     });
   }
 
@@ -137,6 +155,11 @@ class MessageDAO {
         base.arguments = msg.arguments ? JSON.parse(msg.arguments) : undefined;
         base.result = msg.result ? JSON.parse(msg.result) : undefined;
         base.success = msg.success ?? undefined;
+      }
+
+      // 用户消息添加文件信息
+      if (msg.role === "user" && msg.files) {
+        base.files = JSON.parse(msg.files);
       }
 
       return base;
