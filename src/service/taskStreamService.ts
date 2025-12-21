@@ -13,6 +13,7 @@ interface SSEChunk {
     | "tool"
     | "tool_call_start"
     | "tool_call_result"
+    | "summary"
     | "error"
     | "done";
   data?: unknown;

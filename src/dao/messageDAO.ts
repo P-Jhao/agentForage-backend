@@ -12,7 +12,7 @@ import type { MessageRole, MessageType } from "./models/Message.js";
 interface CreateTextMessageData {
   conversationId: number;
   role: MessageRole;
-  type: "chat" | "thinking" | "error";
+  type: "chat" | "thinking" | "summary" | "error";
   content: string;
 }
 

@@ -214,7 +214,15 @@ interface SendMessageBody {
 
 // SSE 消息类型
 interface SSEChunk {
-  type: "history" | "thinking" | "chat" | "tool_call_start" | "tool_call_result" | "error" | "done";
+  type:
+    | "history"
+    | "thinking"
+    | "chat"
+    | "tool_call_start"
+    | "tool_call_result"
+    | "summary"
+    | "error"
+    | "done";
   data?: unknown;
 }
 
@@ -376,6 +384,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       let currentTextContent = "";
       // 当前正在拼接的 thinking 段落
       let currentThinkingContent = "";
+      // 当前正在拼接的 summary 段落
+      let currentSummaryContent = "";
 
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
@@ -494,9 +504,31 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           continue;
         }
 
+        // 处理 summary 类型的文本内容
+        if (chunk.type === "summary") {
+          const chunkData = chunk.data as string;
+          if (chunkData) {
+            // 如果有正在进行的 chat 段落，先保存到数据库
+            if (currentTextContent) {
+              await MessageDAO.createAssistantTextMessage({
+                conversationId: task.id,
+                role: "assistant",
+                type: "chat",
+                content: currentTextContent,
+              });
+              currentTextContent = "";
+            }
+            // 累积 summary 内容
+            currentSummaryContent += chunkData;
+          }
+          // 通过 TaskStreamService 写入
+          TaskStreamService.write(uuid, { type: "summary", data: chunkData });
+          continue;
+        }
+
         // 处理其他类型（error 等）
         const chunkData = chunk.data as string;
-        TaskStreamService.write(uuid, { type: chunkType as SSEChunk["type"], data: chunkData });
+        TaskStreamService.write(uuid, { type: chunk.type, data: chunkData });
       }
 
       // 保存最后一个 thinking 段落
@@ -516,6 +548,16 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           role: "assistant",
           type: "chat",
           content: currentTextContent,
+        });
+      }
+
+      // 保存最后一个 summary 段落
+      if (currentSummaryContent) {
+        await MessageDAO.createAssistantTextMessage({
+          conversationId: task.id,
+          role: "assistant",
+          type: "summary",
+          content: currentSummaryContent,
         });
       }
 

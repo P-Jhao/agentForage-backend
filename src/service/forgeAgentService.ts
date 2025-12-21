@@ -24,7 +24,7 @@ export interface AgentMessage {
  * 流式输出块
  */
 export interface AgentStreamChunk {
-  type: "thinking" | "chat" | "tool_call_start" | "tool_call_result" | "error";
+  type: "thinking" | "chat" | "tool_call_start" | "tool_call_result" | "summary" | "error";
   data: unknown;
 }
 

@@ -15,11 +15,11 @@ import { sequelize } from "../../config/database.js";
 export type MessageRole = "user" | "assistant" | "system";
 
 // 消息类型（每条消息只有一个类型）
-export type MessageType = "chat" | "thinking" | "tool_call" | "error";
+export type MessageType = "chat" | "thinking" | "tool_call" | "summary" | "error";
 
 // 基础消息段落（用于前端展示）
 export interface BaseMessageSegment {
-  type: "thinking" | "chat" | "tool" | "error";
+  type: "thinking" | "chat" | "tool" | "summary" | "error";
   content: string;
 }
 
@@ -88,7 +88,7 @@ class Message
       };
     }
     return {
-      type: this.type as "thinking" | "chat" | "error",
+      type: this.type as "thinking" | "chat" | "summary" | "error",
       content: this.content,
     };
   }
@@ -112,7 +112,7 @@ Message.init(
       comment: "消息角色",
     },
     type: {
-      type: DataTypes.ENUM("chat", "thinking", "tool_call", "error"),
+      type: DataTypes.ENUM("chat", "thinking", "tool_call", "summary", "error"),
       allowNull: false,
       defaultValue: "chat",
       comment: "消息类型",
