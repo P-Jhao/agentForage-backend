@@ -244,7 +244,7 @@ interface ToolCallResultData {
 router.post("/:id/message", tokenAuth(), async (ctx) => {
   const userId = ctx.state.user.id as number;
   const { id: uuid } = ctx.params;
-  const { content, loadHistory, enableThinking = true } = ctx.request.body as SendMessageBody;
+  const { content, loadHistory, enableThinking = false } = ctx.request.body as SendMessageBody;
 
   // 权限检查
   const task = await TaskService.getTask(uuid);
