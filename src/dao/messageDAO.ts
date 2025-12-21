@@ -29,6 +29,7 @@ interface UpdateToolCallResultData {
   success: boolean;
   result?: unknown;
   error?: string;
+  arguments?: Record<string, unknown>; // 工具 LLM 决定的参数
 }
 
 // 扁平消息格式（用于前端展示）
@@ -92,13 +93,17 @@ class MessageDAO {
    * 更新工具调用结果
    */
   static async updateToolCallResult(callId: string, data: UpdateToolCallResultData) {
-    return await Message.update(
-      {
-        success: data.success,
-        result: data.result !== undefined ? JSON.stringify(data.result) : null,
-      },
-      { where: { callId } }
-    );
+    const updateData: Record<string, unknown> = {
+      success: data.success,
+      result: data.result !== undefined ? JSON.stringify(data.result) : null,
+    };
+
+    // 如果有参数，也更新参数
+    if (data.arguments) {
+      updateData.arguments = JSON.stringify(data.arguments);
+    }
+
+    return await Message.update(updateData, { where: { callId } });
   }
 
   /**

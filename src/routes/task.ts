@@ -232,6 +232,7 @@ interface ToolCallResultData {
   success: boolean;
   result?: string;
   error?: string;
+  args?: Record<string, unknown>; // 工具 LLM 决定的参数
 }
 
 /**
@@ -435,11 +436,12 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         if (chunkType === "tool_call_result") {
           const resultData = chunk.data as ToolCallResultData;
 
-          // 更新工具调用结果
+          // 更新工具调用结果（包含参数）
           await MessageDAO.updateToolCallResult(resultData.callId, {
             success: resultData.success,
             result: resultData.result,
             error: resultData.error,
+            arguments: resultData.args, // 保存工具 LLM 决定的参数
           });
 
           // 推送 tool_call_result 给前端
@@ -451,6 +453,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
               success: resultData.success,
               result: resultData.result,
               error: resultData.error,
+              args: resultData.args, // 包含工具 LLM 决定的参数
             },
           });
           continue;
