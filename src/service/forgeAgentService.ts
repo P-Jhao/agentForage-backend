@@ -29,6 +29,16 @@ export interface AgentStreamChunk {
 }
 
 /**
+ * 内置工具激活上下文
+ */
+export interface BuiltinContext {
+  // 用户上传的文件路径列表
+  files?: string[];
+  // 其他上下文信息（可扩展）
+  [key: string]: unknown;
+}
+
+/**
  * 将 MCP 工具调用结果转换为字符串
  */
 function formatToolResult(result: MCPToolCallResult): string {
@@ -68,12 +78,14 @@ class ForgeAgentService {
    * @param messages 消息历史
    * @param model 模型选择（可选）
    * @param enableThinking 是否启用深度思考（默认 true）
+   * @param builtinContext 内置工具激活上下文（可选，如用户上传的文件列表）
    */
   async *stream(
     forgeId: number | null | undefined,
     messages: AgentMessage[],
     model?: "qwen" | "deepseek",
-    enableThinking: boolean = true
+    enableThinking: boolean = true,
+    builtinContext?: BuiltinContext
   ): AsyncGenerator<AgentStreamChunk> {
     let systemPrompt: string | undefined;
     let tools: Array<{
@@ -131,6 +143,7 @@ class ForgeAgentService {
       tools,
       toolExecutor: tools.length > 0 ? toolExecutor : undefined,
       enableThinking,
+      builtinContext,
     });
   }
 
