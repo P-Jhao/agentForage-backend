@@ -43,13 +43,13 @@ export function truncateTitle(text: string, maxLength: number = 20): string {
 class TaskService {
   /**
    * 创建任务
-   * 如果没有提供标题，则根据第一条消息生成截断标题
+   * 初始标题为"新会话"，后续由 LLM 异步生成
    */
   static async createTask(userId: number, params: CreateTaskParams) {
-    const { uuid, agentId, title, firstMessage } = params;
+    const { uuid, agentId, title } = params;
 
-    // 生成标题：优先使用传入的标题，否则根据第一条消息截断
-    const taskTitle = title || truncateTitle(firstMessage || "");
+    // 初始标题：优先使用传入的标题，否则为"新会话"
+    const taskTitle = title || "新会话";
 
     const task = await TaskDAO.create({
       uuid,
@@ -115,6 +115,21 @@ class TaskService {
    */
   static async belongsToUser(uuid: string, userId: number) {
     return await TaskDAO.belongsToUser(uuid, userId);
+  }
+
+  /**
+   * 更新任务标题
+   * 同时推送标题更新事件给前端（用于打字机效果）
+   */
+  static async updateTaskTitle(uuid: string, title: string) {
+    const task = await TaskDAO.update(uuid, { title });
+
+    // 推送标题更新事件
+    if (task) {
+      TaskEventService.pushTitleUpdate(task.userId, task.uuid, title);
+    }
+
+    return task;
   }
 }
 

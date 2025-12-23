@@ -4,12 +4,13 @@
  */
 import Router from "@koa/router";
 import { tokenAuth } from "../middleware/index.js";
-import TaskService from "../service/taskService.js";
+import TaskService, { truncateTitle } from "../service/taskService.js";
 import TaskEventService from "../service/taskEventService.js";
 import TaskStreamService from "../service/taskStreamService.js";
 import ForgeAgentService from "../service/forgeAgentService.js";
 import MessageSummaryService from "../service/messageSummaryService.js";
 import MessageDAO from "../dao/messageDAO.js";
+import { generateTitle } from "agentforge-gateway";
 
 const router = new Router();
 
@@ -584,6 +585,31 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       MessageSummaryService.checkAndTriggerSummary(task.id).catch((error) => {
         console.error("[task.ts] 触发消息总结失败:", error);
       });
+
+      // 如果是第一条消息（标题为"新会话"），异步生成标题
+      if (task.title === "新会话") {
+        (async () => {
+          try {
+            console.log("[task.ts] 开始异步生成标题...");
+            const generatedTitle = await generateTitle(content);
+            if (generatedTitle) {
+              // LLM 生成成功，更新标题并推送
+              await TaskService.updateTaskTitle(uuid, generatedTitle);
+              console.log("[task.ts] 标题生成成功:", generatedTitle);
+            } else {
+              // LLM 生成失败，降级为截断标题
+              const fallbackTitle = truncateTitle(content);
+              await TaskService.updateTaskTitle(uuid, fallbackTitle);
+              console.log("[task.ts] 标题生成失败，使用截断标题:", fallbackTitle);
+            }
+          } catch (error) {
+            console.error("[task.ts] 标题生成异常:", error);
+            // 异常时也降级为截断标题
+            const fallbackTitle = truncateTitle(content);
+            await TaskService.updateTaskTitle(uuid, fallbackTitle).catch(() => {});
+          }
+        })();
+      }
 
       // 发送结束标记并结束流（会关闭所有订阅者连接）
       TaskStreamService.write(uuid, { type: "done" });

@@ -6,7 +6,7 @@ import type { ServerResponse } from "http";
 
 // 任务事件类型
 export interface TaskEvent {
-  type: "status_change" | "task_update";
+  type: "status_change" | "task_update" | "title_update";
   taskUuid: string;
   data: {
     status?: string;
@@ -159,6 +159,19 @@ class TaskEventService {
       type: "mcp:status_change",
       mcpId,
       data: { status, name },
+    });
+  }
+
+  /**
+   * 推送标题更新（用于打字机效果）
+   * 前端收到后会逐字显示新标题
+   */
+  pushTitleUpdate(userId: number, taskUuid: string, title: string) {
+    console.log(`[TaskEventService] 推送标题更新: ${taskUuid} -> ${title}`);
+    this.pushToUser(userId, {
+      type: "title_update",
+      taskUuid,
+      data: { title },
     });
   }
 }
