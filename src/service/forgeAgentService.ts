@@ -29,11 +29,19 @@ export interface AgentStreamChunk {
 }
 
 /**
+ * 文件信息（包含路径和原始文件名）
+ */
+export interface FileInfo {
+  path: string;
+  originalName: string;
+}
+
+/**
  * 内置工具激活上下文
  */
 export interface BuiltinContext {
-  // 用户上传的文件路径列表
-  files?: string[];
+  // 用户上传的文件信息列表（包含路径和原始文件名）
+  files?: FileInfo[];
   // 其他上下文信息（可扩展）
   [key: string]: unknown;
 }

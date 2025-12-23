@@ -425,9 +425,13 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 当前正在拼接的 summary 段落
       let currentSummaryContent = "";
 
-      // 构建内置工具激活上下文（从文件信息中提取路径）
-      const filePaths = files?.map((f) => f.filePath) || [];
-      const builtinContext = filePaths.length > 0 ? { files: filePaths } : undefined;
+      // 构建内置工具激活上下文（从文件信息中提取路径和原始文件名）
+      const fileInfos =
+        files?.map((f) => ({
+          path: f.filePath,
+          originalName: f.originalName,
+        })) || [];
+      const builtinContext = fileInfos.length > 0 ? { files: fileInfos } : undefined;
 
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具

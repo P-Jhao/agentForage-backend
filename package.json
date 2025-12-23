@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "init-db": "tsx src/scripts/init-db.ts",
+    "fix-indexes": "tsx src/scripts/fix-duplicate-indexes.ts",
     "lint": "eslint src --fix",
     "format": "prettier --write src",
     "type-check": "tsc --noEmit",

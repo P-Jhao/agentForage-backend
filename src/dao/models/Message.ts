@@ -121,9 +121,8 @@ Message.init(
       comment: "消息类型",
     },
     content: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT("medium"), // MEDIUMTEXT，最大 16MB
       allowNull: false,
-      defaultValue: "",
       comment: "文本内容（chat/thinking/error 类型使用）",
     },
     callId: {
@@ -142,7 +141,7 @@ Message.init(
       comment: "工具调用参数 JSON（tool_call 类型使用）",
     },
     result: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT("medium"), // MEDIUMTEXT，最大 16MB
       allowNull: true,
       comment: "工具执行结果 JSON（tool_call 类型使用）",
     },
