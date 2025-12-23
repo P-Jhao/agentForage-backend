@@ -172,6 +172,52 @@ class MessageDAO {
   static async deleteByConversationId(conversationId: number) {
     return await Message.destroy({ where: { conversationId } });
   }
+
+  /**
+   * 查询指定消息 ID 之后的消息（用于总结后获取新消息）
+   * @param conversationId 会话 ID
+   * @param afterMessageId 起始消息 ID（不包含）
+   * @returns id > afterMessageId 的消息列表
+   */
+  static async findAfterMessageId(
+    conversationId: number,
+    afterMessageId: number
+  ): Promise<FlatMessage[]> {
+    const { Op } = await import("sequelize");
+    const messages = await Message.findAll({
+      where: {
+        conversationId,
+        id: { [Op.gt]: afterMessageId },
+      },
+      order: [["createdAt", "ASC"]],
+    });
+
+    return messages.map((msg) => {
+      const base: FlatMessage = {
+        id: msg.id,
+        role: msg.role,
+        type: msg.type,
+        content: msg.content,
+        createdAt: msg.createdAt,
+      };
+
+      // 工具调用消息添加额外字段
+      if (msg.type === "tool_call") {
+        base.callId = msg.callId || undefined;
+        base.toolName = msg.toolName || undefined;
+        base.arguments = msg.arguments ? JSON.parse(msg.arguments) : undefined;
+        base.result = msg.result ? JSON.parse(msg.result) : undefined;
+        base.success = msg.success ?? undefined;
+      }
+
+      // 用户消息添加文件信息
+      if (msg.role === "user" && msg.files) {
+        base.files = JSON.parse(msg.files);
+      }
+
+      return base;
+    });
+  }
 }
 
 export default MessageDAO;

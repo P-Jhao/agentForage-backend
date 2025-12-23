@@ -16,11 +16,13 @@ interface ConversationAttributes {
   title: string;
   favorite: boolean;
   status: TaskStatus;
+  summary: string | null;
+  summaryUntilMessageId: number | null;
 }
 
 type ConversationCreationAttributes = Optional<
   ConversationAttributes,
-  "id" | "title" | "favorite" | "status" | "agentId"
+  "id" | "title" | "favorite" | "status" | "agentId" | "summary" | "summaryUntilMessageId"
 >;
 
 class Conversation
@@ -34,6 +36,8 @@ class Conversation
   declare title: string;
   declare favorite: boolean;
   declare status: TaskStatus;
+  declare summary: string | null;
+  declare summaryUntilMessageId: number | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -76,6 +80,18 @@ Conversation.init(
       type: DataTypes.ENUM("running", "completed", "cancelled"),
       defaultValue: "running",
       comment: "任务状态：running-运行中, completed-已完成, cancelled-已取消",
+    },
+    summary: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
+      comment: "历史消息总结",
+    },
+    summaryUntilMessageId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+      comment: "总结覆盖到的最后一条消息 ID",
     },
   },
   {

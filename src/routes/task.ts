@@ -8,6 +8,7 @@ import TaskService from "../service/taskService.js";
 import TaskEventService from "../service/taskEventService.js";
 import TaskStreamService from "../service/taskStreamService.js";
 import ForgeAgentService from "../service/forgeAgentService.js";
+import MessageSummaryService from "../service/messageSummaryService.js";
 import MessageDAO from "../dao/messageDAO.js";
 
 const router = new Router();
@@ -381,42 +382,10 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 获取历史消息构建上下文（用于 LLM）
       // 使用扁平格式，已解析 JSON 字段
       const history = await MessageDAO.findFlatByConversationId(task.id);
-      const chatMessages: { role: "user" | "assistant" | "system"; content: string }[] = [];
 
-      // 将消息转换为 LLM 上下文格式
-      // 需要包含工具调用信息，让 AI 理解之前做过什么操作
-      let currentAssistantContent = "";
-      let lastRole: string | null = null;
-
-      for (const msg of history) {
-        if (msg.role === "user") {
-          // 保存之前的 assistant 内容
-          if (lastRole === "assistant" && currentAssistantContent) {
-            chatMessages.push({ role: "assistant", content: currentAssistantContent });
-            currentAssistantContent = "";
-          }
-          chatMessages.push({ role: "user", content: msg.content });
-          lastRole = "user";
-        } else if (msg.role === "assistant") {
-          // 收集所有类型的内容，包括工具调用
-          if (msg.type === "tool_call") {
-            // 将工具调用信息转换为文本描述，让 AI 知道之前调用过什么工具
-            const toolName = msg.toolName || "unknown";
-            const toolArgs = msg.arguments ? JSON.stringify(msg.arguments) : "{}";
-            const toolResult = msg.result ? JSON.stringify(msg.result) : "无结果";
-            const toolInfo = `[调用工具 ${toolName}，参数: ${toolArgs}，结果: ${toolResult}]`;
-            currentAssistantContent += (currentAssistantContent ? "\n" : "") + toolInfo;
-          } else if (msg.content) {
-            // 文本内容（chat/thinking/error）
-            currentAssistantContent += (currentAssistantContent ? "\n" : "") + msg.content;
-          }
-          lastRole = "assistant";
-        }
-      }
-      // 保存最后的 assistant 内容
-      if (lastRole === "assistant" && currentAssistantContent) {
-        chatMessages.push({ role: "assistant", content: currentAssistantContent });
-      }
+      // 获取会话总结信息，使用 MessageSummaryService 构建上下文
+      const summaryInfo = await MessageSummaryService.getConversationSummaryInfo(task.id);
+      const chatMessages = MessageSummaryService.buildContextMessages(summaryInfo, history);
 
       // 当前正在拼接的文本段落（用于流式输出时合并同类型内容）
       let currentTextContent = "";
@@ -610,6 +579,11 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 更新任务状态为 completed
       await TaskService.updateTaskStatus(uuid, "completed");
+
+      // LLM 回复完成后，异步检查并触发消息总结（不阻塞主流程）
+      MessageSummaryService.checkAndTriggerSummary(task.id).catch((error) => {
+        console.error("[task.ts] 触发消息总结失败:", error);
+      });
 
       // 发送结束标记并结束流（会关闭所有订阅者连接）
       TaskStreamService.write(uuid, { type: "done" });
