@@ -290,11 +290,6 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
     files,
   } = ctx.request.body as SendMessageBody;
 
-  // 调试日志
-  console.log("[task.ts] 收到请求体:", JSON.stringify(ctx.request.body, null, 2));
-  console.log("[task.ts] files:", files);
-  console.log("[task.ts] enhanceMode:", enhanceMode);
-
   // 权限检查
   const task = await TaskService.getTask(uuid);
   if (!task) {
