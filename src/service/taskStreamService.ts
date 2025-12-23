@@ -35,6 +35,33 @@ class TaskStreamService {
   private streams: Map<string, TaskStream> = new Map();
 
   /**
+   * 检查响应是否已关闭
+   */
+  private isResponseClosed(res: ServerResponse): boolean {
+    return res.writableEnded || res.destroyed || !res.writable;
+  }
+
+  /**
+   * 清理已关闭的订阅者
+   */
+  private cleanupClosedSubscribers(stream: TaskStream): void {
+    const closedSubscribers: ServerResponse[] = [];
+    for (const subscriber of stream.subscribers) {
+      if (this.isResponseClosed(subscriber)) {
+        closedSubscribers.push(subscriber);
+      }
+    }
+    for (const subscriber of closedSubscribers) {
+      stream.subscribers.delete(subscriber);
+    }
+    if (closedSubscribers.length > 0) {
+      console.log(
+        `[TaskStreamService] 任务 ${stream.taskUuid} 清理了 ${closedSubscribers.length} 个已关闭的订阅者，剩余: ${stream.subscribers.size}`
+      );
+    }
+  }
+
+  /**
    * 开始一个任务流
    */
   startStream(taskUuid: string): void {
@@ -63,6 +90,9 @@ class TaskStreamService {
       return;
     }
 
+    // 写入前先清理已关闭的订阅者
+    this.cleanupClosedSubscribers(stream);
+
     // 写入缓冲区
     stream.buffer.push(chunk);
 
@@ -74,8 +104,14 @@ class TaskStreamService {
       console.log(`[TaskStreamService] 任务 ${taskUuid} 没有订阅者，仅写入缓冲区`);
     }
 
+    const failedSubscribers: ServerResponse[] = [];
     for (const subscriber of stream.subscribers) {
       try {
+        // 再次检查连接状态
+        if (this.isResponseClosed(subscriber)) {
+          failedSubscribers.push(subscriber);
+          continue;
+        }
         subscriber.write(data);
         // 尝试立即刷新数据（如果支持）
         if (typeof (subscriber as unknown as { flush?: () => void }).flush === "function") {
@@ -83,8 +119,13 @@ class TaskStreamService {
         }
       } catch (error) {
         console.error(`[TaskStreamService] 写入订阅者失败:`, error);
-        stream.subscribers.delete(subscriber);
+        failedSubscribers.push(subscriber);
       }
+    }
+
+    // 移除失败的订阅者
+    for (const subscriber of failedSubscribers) {
+      stream.subscribers.delete(subscriber);
     }
   }
 
@@ -102,7 +143,9 @@ class TaskStreamService {
     // 关闭所有订阅者连接
     for (const subscriber of stream.subscribers) {
       try {
-        subscriber.end();
+        if (!this.isResponseClosed(subscriber)) {
+          subscriber.end();
+        }
       } catch {
         // 忽略关闭错误
       }
@@ -127,6 +170,15 @@ class TaskStreamService {
     if (!stream || stream.completed) {
       return false;
     }
+
+    // 检查响应是否已关闭
+    if (this.isResponseClosed(res)) {
+      console.warn(`[TaskStreamService] 尝试订阅已关闭的响应`);
+      return false;
+    }
+
+    // 订阅前先清理已关闭的订阅者
+    this.cleanupClosedSubscribers(stream);
 
     // 先发送缓冲区中的所有数据（追赶）
     for (const chunk of stream.buffer) {

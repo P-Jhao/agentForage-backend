@@ -345,6 +345,19 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         return;
       }
 
+      // 检查是否有正在进行的流（内存中的实际状态），防止并发发送消息
+      if (TaskStreamService.isRunning(uuid)) {
+        write({ type: "error", data: { message: "任务正在执行中，请等待完成后再发送新消息" } });
+        res.end();
+        ctx.respond = false;
+        return;
+      }
+
+      // 如果数据库状态是 running 但流已结束，说明之前异常退出，修复状态
+      if (task.status === "running") {
+        await TaskService.updateTaskStatus(uuid, "completed");
+      }
+
       // 保存用户消息（包含文件信息）
       await MessageDAO.createUserMessage(task.id, content, files);
 
