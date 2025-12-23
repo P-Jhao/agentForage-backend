@@ -91,14 +91,6 @@ class MessageSummaryService {
     // 获取所有消息
     const messages = await MessageDAO.findFlatByConversationId(conversationId);
 
-    // 检查消息数量是否超过阈值
-    if (messages.length <= this.SUMMARY_THRESHOLD) {
-      console.log(
-        `[MessageSummaryService] 会话 ${conversationId} 消息数 ${messages.length} 未超过阈值 ${this.SUMMARY_THRESHOLD}，跳过`
-      );
-      return;
-    }
-
     // 获取会话信息，检查是否已有总结
     const conversation = await Conversation.findByPk(conversationId);
     if (!conversation) {
@@ -116,21 +108,28 @@ class MessageSummaryService {
       return;
     }
 
-    // 需要总结的消息（不包括最后一轮）
-    const messagesToSummarize = messages.slice(0, lastRoundStartIndex);
+    // 获取旧总结信息
+    const existingSummary = conversation.summary;
+    const summaryUntilMessageId = conversation.summaryUntilMessageId;
 
-    // 如果已有总结，检查是否需要更新
-    // 只有当新消息数量超过阈值时才重新总结
-    if (conversation.summaryUntilMessageId) {
-      const newMessagesCount = messages.filter(
-        (m) => m.id > conversation.summaryUntilMessageId!
-      ).length;
-      if (newMessagesCount <= this.SUMMARY_THRESHOLD) {
-        console.log(
-          `[MessageSummaryService] 会话 ${conversationId} 新消息数 ${newMessagesCount} 未超过阈值，跳过`
-        );
-        return;
-      }
+    // 计算需要新总结的消息（总结后的消息，不包括最后一轮）
+    let newMessagesToSummarize: FlatMessage[];
+    if (summaryUntilMessageId) {
+      // 已有总结：只取 summaryUntilMessageId 之后、最后一轮之前的消息
+      newMessagesToSummarize = messages.filter(
+        (m) => m.id > summaryUntilMessageId && messages.indexOf(m) < lastRoundStartIndex
+      );
+    } else {
+      // 无总结：取最后一轮之前的所有消息
+      newMessagesToSummarize = messages.slice(0, lastRoundStartIndex);
+    }
+
+    // 检查新消息数量是否超过阈值
+    if (newMessagesToSummarize.length <= this.SUMMARY_THRESHOLD) {
+      console.log(
+        `[MessageSummaryService] 会话 ${conversationId} 新消息数 ${newMessagesToSummarize.length} 未超过阈值 ${this.SUMMARY_THRESHOLD}，跳过`
+      );
+      return;
     }
 
     // 标记为正在总结
@@ -140,11 +139,11 @@ class MessageSummaryService {
     });
 
     console.log(
-      `[MessageSummaryService] 开始异步总结会话 ${conversationId}，消息数: ${messagesToSummarize.length}`
+      `[MessageSummaryService] 开始异步总结会话 ${conversationId}，新消息数: ${newMessagesToSummarize.length}，已有总结: ${existingSummary ? "是" : "否"}`
     );
 
     // 异步执行总结，不阻塞主流程
-    this.executeSummary(conversationId, messagesToSummarize).catch((error) => {
+    this.executeSummary(conversationId, newMessagesToSummarize, existingSummary).catch((error) => {
       console.error(`[MessageSummaryService] 总结失败:`, error);
     });
   }
@@ -152,12 +151,25 @@ class MessageSummaryService {
   /**
    * 执行总结任务（内部方法）
    * @param conversationId 会话 ID
-   * @param messages 需要总结的消息
+   * @param newMessages 需要总结的新消息
+   * @param existingSummary 已有的总结（用于增量总结）
    */
-  private async executeSummary(conversationId: number, messages: FlatMessage[]): Promise<void> {
+  private async executeSummary(
+    conversationId: number,
+    newMessages: FlatMessage[],
+    existingSummary: string | null
+  ): Promise<void> {
     try {
       // 将 FlatMessage 转换为 Gateway 需要的格式
-      const gatewayMessages = this.convertToGatewayMessages(messages);
+      const gatewayMessages = this.convertToGatewayMessages(newMessages);
+
+      // 如果有旧总结，在消息列表前添加旧总结作为上下文
+      if (existingSummary) {
+        gatewayMessages.unshift({
+          role: "system",
+          content: `【之前的对话摘要】\n${existingSummary}\n\n请将上述摘要与以下新对话内容合并，生成一个完整的新摘要：`,
+        });
+      }
 
       // 调用 Gateway 生成总结
       const { summarizeMessages } = await loadGateway();
@@ -169,7 +181,7 @@ class MessageSummaryService {
       }
 
       // 获取需要总结的最后一条消息的 ID
-      const lastMessageId = messages[messages.length - 1].id;
+      const lastMessageId = newMessages[newMessages.length - 1].id;
 
       // 更新数据库
       await Conversation.update(
@@ -181,7 +193,7 @@ class MessageSummaryService {
       );
 
       console.log(
-        `[MessageSummaryService] 会话 ${conversationId} 总结完成，覆盖到消息 ${lastMessageId}`
+        `[MessageSummaryService] 会话 ${conversationId} 总结完成，覆盖到消息 ${lastMessageId}，增量总结: ${existingSummary ? "是" : "否"}`
       );
     } finally {
       // 无论成功失败，都清除总结状态
