@@ -77,6 +77,10 @@ class TaskStreamService {
     for (const subscriber of stream.subscribers) {
       try {
         subscriber.write(data);
+        // 尝试立即刷新数据（如果支持）
+        if (typeof (subscriber as unknown as { flush?: () => void }).flush === "function") {
+          (subscriber as unknown as { flush: () => void }).flush();
+        }
       } catch (error) {
         console.error(`[TaskStreamService] 写入订阅者失败:`, error);
         stream.subscribers.delete(subscriber);

@@ -93,7 +93,12 @@ router.get("/subscribe", tokenAuth(), async (ctx) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
+    // 禁用 Nginx 等代理的缓冲
+    "X-Accel-Buffering": "no",
   });
+
+  // 立即发送响应头
+  res.flushHeaders();
 
   // 发送初始连接成功消息
   res.write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
@@ -290,7 +295,12 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
     "Content-Type": "application/x-ndjson",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
+    // 禁用 Nginx 等代理的缓冲
+    "X-Accel-Buffering": "no",
   });
+
+  // 立即发送响应头，确保连接建立
+  res.flushHeaders();
 
   // 写入 NDJSON 格式数据
   const write = (chunk: SSEChunk) => {
