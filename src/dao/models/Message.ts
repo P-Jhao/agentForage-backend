@@ -15,11 +15,35 @@ import { sequelize } from "../../config/database.js";
 export type MessageRole = "user" | "assistant" | "system";
 
 // 消息类型（每条消息只有一个类型）
-export type MessageType = "chat" | "thinking" | "tool_call" | "summary" | "error";
+export type MessageType =
+  | "chat" // 普通对话消息
+  | "thinking" // AI 思考过程
+  | "tool_call" // 工具调用
+  | "summary" // 消息总结
+  | "error" // 错误消息
+  // 提示词增强相关类型
+  | "user_original" // 开启增强时的用户原始输入
+  | "user_answer" // 智能迭代中用户对澄清问题的回复
+  | "reviewer" // 审查者输出
+  | "questioner" // 提问者输出
+  | "expert" // 专家分析输出
+  | "enhancer"; // 增强后的提示词
 
 // 基础消息段落（用于前端展示）
 export interface BaseMessageSegment {
-  type: "thinking" | "chat" | "tool" | "summary" | "error";
+  type:
+    | "thinking"
+    | "chat"
+    | "tool"
+    | "summary"
+    | "error"
+    // 提示词增强相关类型
+    | "user_original"
+    | "user_answer"
+    | "reviewer"
+    | "questioner"
+    | "expert"
+    | "enhancer";
   content: string;
 }
 
@@ -91,7 +115,7 @@ class Message
       };
     }
     return {
-      type: this.type as "thinking" | "chat" | "summary" | "error",
+      type: this.type as BaseMessageSegment["type"],
       content: this.content,
     };
   }
@@ -115,7 +139,20 @@ Message.init(
       comment: "消息角色",
     },
     type: {
-      type: DataTypes.ENUM("chat", "thinking", "tool_call", "summary", "error"),
+      type: DataTypes.ENUM(
+        "chat",
+        "thinking",
+        "tool_call",
+        "summary",
+        "error",
+        // 提示词增强相关类型
+        "user_original",
+        "user_answer",
+        "reviewer",
+        "questioner",
+        "expert",
+        "enhancer"
+      ),
       allowNull: false,
       defaultValue: "chat",
       comment: "消息类型",

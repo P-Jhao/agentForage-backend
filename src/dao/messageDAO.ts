@@ -8,6 +8,15 @@
 import { Message } from "./models/index.js";
 import type { MessageRole, MessageType } from "./models/Message.js";
 
+// 增强过程消息类型
+export type EnhanceProcessType =
+  | "user_original"
+  | "user_answer"
+  | "reviewer"
+  | "questioner"
+  | "expert"
+  | "enhancer";
+
 // 创建文本消息参数
 interface CreateTextMessageData {
   conversationId: number;
@@ -63,18 +72,44 @@ class MessageDAO {
    * @param conversationId 会话 ID
    * @param content 消息内容
    * @param files 用户上传的文件信息（可选）
+   * @param type 消息类型，默认为 'chat'，开启增强时使用 'user_original'
    */
   static async createUserMessage(
     conversationId: number,
     content: string,
-    files?: UploadedFileInfo[]
+    files?: UploadedFileInfo[],
+    type: "chat" | "user_original" | "user_answer" = "chat"
   ) {
     return await Message.create({
       conversationId,
       role: "user",
-      type: "chat",
+      type,
       content,
       files: files && files.length > 0 ? JSON.stringify(files) : null,
+    });
+  }
+
+  /**
+   * 创建增强过程消息
+   * 用于保存审查者、提问者、专家、增强器的输出
+   * @param conversationId 会话 ID
+   * @param type 增强过程消息类型
+   * @param content 消息内容
+   */
+  static async createEnhanceProcessMessage(
+    conversationId: number,
+    type: EnhanceProcessType,
+    content: string
+  ) {
+    // 确定消息角色：user_original 和 user_answer 是用户消息，其他是 assistant 消息
+    const role: MessageRole =
+      type === "user_original" || type === "user_answer" ? "user" : "assistant";
+
+    return await Message.create({
+      conversationId,
+      role,
+      type,
+      content,
     });
   }
 

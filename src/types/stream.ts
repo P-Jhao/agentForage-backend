@@ -11,7 +11,12 @@ export type ChunkType =
   | "status" // 状态变更
   | "heartbeat" // 心跳
   | "error" // 错误
-  | "done"; // 结束
+  | "done" // 结束
+  // 提示词增强相关类型
+  | "reviewer" // 审查者输出
+  | "questioner" // 提问者输出
+  | "expert" // 专家分析输出
+  | "enhancer"; // 增强后的提示词
 
 // 流式事件类型
 export type StreamEvent = "start" | "data" | "end";
@@ -68,6 +73,11 @@ export function createChunk(type: "toolResult", data: ToolResultData): StreamChu
 export function createChunk(type: "status", data: StatusData): StreamChunk;
 export function createChunk(type: "error", data: ErrorData): StreamChunk;
 export function createChunk(type: "heartbeat" | "done"): StreamChunk;
+// 提示词增强相关类型
+export function createChunk(
+  type: "reviewer" | "questioner" | "expert" | "enhancer",
+  data: StreamTextData
+): StreamChunk;
 export function createChunk(type: ChunkType, data?: ChunkData): StreamChunk {
   return data !== undefined ? { type, data } : { type };
 }
