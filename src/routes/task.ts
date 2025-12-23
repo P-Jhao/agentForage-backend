@@ -9,8 +9,10 @@ import TaskEventService from "../service/taskEventService.js";
 import TaskStreamService from "../service/taskStreamService.js";
 import ForgeAgentService from "../service/forgeAgentService.js";
 import MessageSummaryService from "../service/messageSummaryService.js";
+import PromptEnhanceService from "../service/promptEnhanceService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import { generateTitle } from "agentforge-gateway";
+import { filterMessagesForLLM } from "../utils/messageFilter.js";
 
 const router = new Router();
 
@@ -217,6 +219,14 @@ interface SendMessageBody {
   content?: string; // 用户消息内容（发送新消息时必填）
   loadHistory?: boolean; // 是否加载历史消息
   enableThinking?: boolean; // 是否启用深度思考（默认 false）
+  // 提示词增强相关参数
+  enhanceMode?: "off" | "quick" | "smart" | "multi"; // 增强模式
+  // 智能迭代模式中，用户回复澄清问题时使用
+  iterateContext?: {
+    originalPrompt: string;
+    reviewerOutput: string;
+    questionerOutput: string;
+  };
   files?: Array<{
     filePath: string;
     originalName: string;
@@ -235,7 +245,13 @@ interface SSEChunk {
     | "tool_call_result"
     | "summary"
     | "error"
-    | "done";
+    | "done"
+    // 提示词增强相关类型
+    | "user_original" // 用户原始输入（增强模式下）
+    | "reviewer" // 审查者输出
+    | "questioner" // 提问者输出
+    | "expert" // 专家分析输出
+    | "enhancer"; // 增强后的提示词
   data?: unknown;
 }
 
@@ -269,12 +285,15 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
     content,
     loadHistory,
     enableThinking = false,
+    enhanceMode = "off",
+    iterateContext,
     files,
   } = ctx.request.body as SendMessageBody;
 
   // 调试日志
   console.log("[task.ts] 收到请求体:", JSON.stringify(ctx.request.body, null, 2));
   console.log("[task.ts] files:", files);
+  console.log("[task.ts] enhanceMode:", enhanceMode);
 
   // 权限检查
   const task = await TaskService.getTask(uuid);
@@ -360,8 +379,18 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         await TaskService.updateTaskStatus(uuid, "completed");
       }
 
+      // 根据增强模式决定用户消息类型
+      // 智能迭代模式中用户回复澄清问题时，类型为 user_answer
+      // 其他增强模式开启时，类型为 user_original
+      // 关闭增强时，类型为 chat
+      const userMessageType = iterateContext
+        ? "user_answer"
+        : enhanceMode !== "off"
+          ? "user_original"
+          : "chat";
+
       // 保存用户消息（包含文件信息）
-      await MessageDAO.createUserMessage(task.id, content, files);
+      await MessageDAO.createUserMessage(task.id, content, files, userMessageType);
 
       // 更新任务状态为 running
       await TaskService.updateTaskStatus(uuid, "running");
@@ -380,13 +409,90 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         TaskStreamService.unsubscribe(uuid, res);
       });
 
+      // ========== 提示词增强流程 ==========
+      // 根据增强模式处理用户消息
+      let finalPrompt = content; // 最终发送给对话 LLM 的提示词
+      let skipLLMCall = false; // 是否跳过对话 LLM 调用（智能迭代等待用户回复时）
+
+      if (enhanceMode === "quick") {
+        // 快速增强模式：直接增强后调用对话 LLM
+        console.log("[task.ts] 执行快速增强...");
+        const result = await PromptEnhanceService.quickEnhance(uuid, task.id, content);
+        if (result.success) {
+          finalPrompt = result.enhancedPrompt;
+        } else {
+          console.warn("[task.ts] 快速增强失败，使用原始提示词:", result.error);
+        }
+      } else if (enhanceMode === "smart") {
+        if (iterateContext) {
+          // 智能迭代模式 - 用户已回复澄清问题，执行增强阶段
+          console.log("[task.ts] 执行智能迭代增强阶段...");
+          const result = await PromptEnhanceService.smartEnhance(uuid, task.id, {
+            originalPrompt: iterateContext.originalPrompt,
+            reviewerOutput: iterateContext.reviewerOutput,
+            questionerOutput: iterateContext.questionerOutput,
+            userAnswer: content,
+          });
+          if (result.success) {
+            finalPrompt = result.enhancedPrompt;
+          } else {
+            console.warn("[task.ts] 智能迭代增强失败，使用原始提示词:", result.error);
+            finalPrompt = iterateContext.originalPrompt;
+          }
+        } else {
+          // 智能迭代模式 - 首次发送，执行审查和提问阶段
+          console.log("[task.ts] 执行智能迭代审查和提问阶段...");
+          const result = await PromptEnhanceService.smartReviewAndQuestion(uuid, task.id, content);
+          if (result.success) {
+            // 审查和提问完成，等待用户回复，不调用对话 LLM
+            skipLLMCall = true;
+          } else {
+            console.warn("[task.ts] 智能迭代审查/提问失败，使用原始提示词");
+          }
+        }
+      } else if (enhanceMode === "multi") {
+        // 多角度增强模式：专家分析 + 评审官综合
+        console.log("[task.ts] 执行多角度增强...");
+        const result = await PromptEnhanceService.multiEnhance(uuid, task.id, content);
+        if (result.success) {
+          finalPrompt = result.enhancedPrompt;
+        } else {
+          console.warn("[task.ts] 多角度增强失败，使用原始提示词:", result.error);
+        }
+      }
+
+      // 如果跳过 LLM 调用（智能迭代等待用户回复），直接结束
+      if (skipLLMCall) {
+        await TaskService.updateTaskStatus(uuid, "completed");
+        TaskStreamService.write(uuid, { type: "done" });
+        TaskStreamService.endStream(uuid);
+        ctx.respond = false;
+        return;
+      }
+
+      // ========== 调用对话 LLM ==========
       // 获取历史消息构建上下文（用于 LLM）
       // 使用扁平格式，已解析 JSON 字段
       const history = await MessageDAO.findFlatByConversationId(task.id);
 
+      // 过滤增强过程消息，只保留对话相关消息
+      const filteredHistory = filterMessagesForLLM(history);
+
       // 获取会话总结信息，使用 MessageSummaryService 构建上下文
       const summaryInfo = await MessageSummaryService.getConversationSummaryInfo(task.id);
-      const chatMessages = MessageSummaryService.buildContextMessages(summaryInfo, history);
+      // 使用过滤后的历史消息构建上下文
+      const chatMessages = MessageSummaryService.buildContextMessages(summaryInfo, filteredHistory);
+
+      // 如果有增强后的提示词，替换最后一条用户消息的内容
+      if (enhanceMode !== "off" && finalPrompt !== content) {
+        // 找到最后一条用户消息并替换内容
+        for (let i = chatMessages.length - 1; i >= 0; i--) {
+          if (chatMessages[i].role === "user") {
+            chatMessages[i].content = finalPrompt;
+            break;
+          }
+        }
+      }
 
       // 当前正在拼接的文本段落（用于流式输出时合并同类型内容）
       let currentTextContent = "";

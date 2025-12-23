@@ -15,7 +15,13 @@ interface SSEChunk {
     | "tool_call_result"
     | "summary"
     | "error"
-    | "done";
+    | "done"
+    // 提示词增强相关类型
+    | "user_original"
+    | "reviewer"
+    | "questioner"
+    | "expert"
+    | "enhancer";
   data?: unknown;
 }
 
