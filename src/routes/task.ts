@@ -688,25 +688,28 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       });
 
       // 如果是第一条消息（标题为"新会话"），异步生成标题
+      // 如果开启了增强功能，使用增强后的提示词生成标题
       if (task.title === "新会话") {
+        const titleContent =
+          enhanceMode !== "off" && finalPrompt !== content ? finalPrompt : content;
         (async () => {
           try {
             console.log("[task.ts] 开始异步生成标题...");
-            const generatedTitle = await generateTitle(content);
+            const generatedTitle = await generateTitle(titleContent);
             if (generatedTitle) {
               // LLM 生成成功，更新标题并推送
               await TaskService.updateTaskTitle(uuid, generatedTitle);
               console.log("[task.ts] 标题生成成功:", generatedTitle);
             } else {
               // LLM 生成失败，降级为截断标题
-              const fallbackTitle = truncateTitle(content);
+              const fallbackTitle = truncateTitle(titleContent);
               await TaskService.updateTaskTitle(uuid, fallbackTitle);
               console.log("[task.ts] 标题生成失败，使用截断标题:", fallbackTitle);
             }
           } catch (error) {
             console.error("[task.ts] 标题生成异常:", error);
             // 异常时也降级为截断标题
-            const fallbackTitle = truncateTitle(content);
+            const fallbackTitle = truncateTitle(titleContent);
             await TaskService.updateTaskTitle(uuid, fallbackTitle).catch(() => {});
           }
         })();
