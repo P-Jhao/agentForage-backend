@@ -14,6 +14,7 @@ interface SetFeaturedBody {
   coverImage?: string;
   title?: string;
   description?: string;
+  clonePrompt?: string;
   sortOrder?: number;
 }
 
@@ -45,7 +46,7 @@ router.get("/check/:taskUuid", tokenAuth(), async (ctx) => {
  * POST /api/featured
  */
 router.post("/", tokenAuth(), adminAuth(), async (ctx) => {
-  const { taskUuid, coverImage, title, description, sortOrder } = ctx.request
+  const { taskUuid, coverImage, title, description, clonePrompt, sortOrder } = ctx.request
     .body as SetFeaturedBody;
 
   if (!taskUuid) {
@@ -59,6 +60,7 @@ router.post("/", tokenAuth(), adminAuth(), async (ctx) => {
     coverImage,
     title,
     description,
+    clonePrompt,
     sortOrder,
   });
 

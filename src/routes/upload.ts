@@ -17,6 +17,8 @@ const __dirname = path.dirname(__filename);
 const avatarUploadDir = path.join(__dirname, "../../public/uploads/avatars");
 // 聊天文件上传目录
 const chatUploadDir = path.join(__dirname, "../../public/uploads/chat");
+// 通用图片上传目录
+const imageUploadDir = path.join(__dirname, "../../public/uploads/images");
 
 // 确保上传目录存在
 if (!fs.existsSync(avatarUploadDir)) {
@@ -24,6 +26,9 @@ if (!fs.existsSync(avatarUploadDir)) {
 }
 if (!fs.existsSync(chatUploadDir)) {
   fs.mkdirSync(chatUploadDir, { recursive: true });
+}
+if (!fs.existsSync(imageUploadDir)) {
+  fs.mkdirSync(imageUploadDir, { recursive: true });
 }
 
 // 头像上传配置
@@ -57,6 +62,26 @@ const avatarUpload = multer({
   fileFilter: avatarFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 最大 5MB
+  },
+});
+
+// 通用图片上传配置
+const imageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, imageUploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const filename = `${randomUUID()}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const imageUpload = multer({
+  storage: imageStorage,
+  fileFilter: avatarFileFilter, // 复用头像的图片过滤器
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 最大 10MB
   },
 });
 
@@ -194,6 +219,30 @@ router.post("/avatar", tokenAuth(), avatarUpload.single("file"), async (ctx) => 
     code: 200,
     message: "上传成功",
     data: { url },
+  };
+});
+
+/**
+ * 上传通用图片（封面图等）
+ * POST /api/upload/image
+ */
+router.post("/image", tokenAuth(), imageUpload.single("file"), async (ctx) => {
+  const file = ctx.file;
+
+  if (!file) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "请选择要上传的图片", data: null };
+    return;
+  }
+
+  // 返回图片访问路径和 URL
+  const filePath = `/uploads/images/${file.filename}`;
+  const url = `/api/uploads/images/${file.filename}`;
+
+  ctx.body = {
+    code: 200,
+    message: "上传成功",
+    data: { filePath, url },
   };
 });
 

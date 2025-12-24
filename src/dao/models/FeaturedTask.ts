@@ -11,12 +11,13 @@ interface FeaturedTaskAttributes {
   coverImage: string | null;
   title: string | null;
   description: string | null;
+  clonePrompt: string | null;
   sortOrder: number;
 }
 
 type FeaturedTaskCreationAttributes = Optional<
   FeaturedTaskAttributes,
-  "id" | "coverImage" | "title" | "description" | "sortOrder"
+  "id" | "coverImage" | "title" | "description" | "clonePrompt" | "sortOrder"
 >;
 
 class FeaturedTask
@@ -28,6 +29,7 @@ class FeaturedTask
   declare coverImage: string | null;
   declare title: string | null;
   declare description: string | null;
+  declare clonePrompt: string | null;
   declare sortOrder: number;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -63,6 +65,12 @@ FeaturedTask.init(
       allowNull: true,
       defaultValue: null,
       comment: "描述",
+    },
+    clonePrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
+      comment: "一键做同款的 prompt 内容",
     },
     sortOrder: {
       type: DataTypes.INTEGER,

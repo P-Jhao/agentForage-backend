@@ -32,6 +32,7 @@ interface SetFeaturedParams {
   coverImage?: string;
   title?: string;
   description?: string;
+  clonePrompt?: string;
   sortOrder?: number;
 }
 
@@ -102,7 +103,7 @@ class FeaturedTaskService {
    * 设置推荐示例（创建或更新）
    */
   async setFeatured(params: SetFeaturedParams): Promise<FeaturedTask> {
-    const { taskUuid, coverImage, title, description, sortOrder } = params;
+    const { taskUuid, coverImage, title, description, clonePrompt, sortOrder } = params;
 
     // 检查任务是否存在
     const task = await Conversation.findOne({ where: { uuid: taskUuid } });
@@ -119,6 +120,7 @@ class FeaturedTaskService {
         coverImage: coverImage !== undefined ? coverImage : existing.coverImage,
         title: title !== undefined ? title : existing.title,
         description: description !== undefined ? description : existing.description,
+        clonePrompt: clonePrompt !== undefined ? clonePrompt : existing.clonePrompt,
         sortOrder: sortOrder !== undefined ? sortOrder : existing.sortOrder,
       });
       return existing;
@@ -130,6 +132,7 @@ class FeaturedTaskService {
       coverImage: coverImage || null,
       title: title || null,
       description: description || null,
+      clonePrompt: clonePrompt || null,
       sortOrder: sortOrder || 0,
     });
   }
