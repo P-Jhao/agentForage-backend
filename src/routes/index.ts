@@ -11,6 +11,7 @@ import taskRoutes from "./task.js";
 import forgeRoutes from "./forge.js";
 import uploadRoutes from "./upload.js";
 import featuredRoutes from "./featured.js";
+import intentRoutes from "./intent.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -29,5 +30,6 @@ router.use("/task", taskRoutes.routes());
 router.use("/forge", forgeRoutes.routes());
 router.use("/upload", uploadRoutes.routes());
 router.use("/featured", featuredRoutes.routes());
+router.use("/intent", intentRoutes.routes());
 
 export default router;

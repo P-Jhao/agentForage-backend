@@ -170,6 +170,41 @@ class ForgeDAO {
     const count = await Agent.count({ where: { id, isActive: true } });
     return count > 0;
   }
+
+  /**
+   * 更新 Forge 摘要
+   * @param id Forge ID
+   * @param summary 摘要内容
+   */
+  static async updateSummary(id: number, summary: string) {
+    const [affectedCount] = await Agent.update({ summary }, { where: { id } });
+    return affectedCount > 0;
+  }
+
+  /**
+   * 获取所有公开 Forge 的摘要列表（用于意图分析）
+   * @param userId 当前用户 ID（可选，用于包含用户自己的非公开 Forge）
+   */
+  static async getAllSummaries(userId?: number) {
+    const where: Record<string, unknown> = { isActive: true };
+
+    if (userId) {
+      where[Op.or as unknown as string] = [{ isPublic: true }, { userId }];
+    } else {
+      where.isPublic = true;
+    }
+
+    const forges = await Agent.findAll({
+      where,
+      attributes: ["id", "displayName", "summary"],
+    });
+
+    return forges.map((forge) => ({
+      id: forge.id,
+      name: forge.displayName,
+      summary: forge.summary || "",
+    }));
+  }
 }
 
 export default ForgeDAO;

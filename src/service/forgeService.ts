@@ -10,6 +10,11 @@ import TaskService from "./taskService.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
 import type { ToolInfo } from "../dao/models/McpForge.js";
 
+// 动态导入 Gateway（用于摘要生成）
+const loadGateway = async () => {
+  return await import("agentforge-gateway");
+};
+
 // Forge 筛选类型
 type ForgeFilter = "all" | "my" | "builtin" | "other";
 
@@ -42,6 +47,46 @@ interface UpdateForgeParams {
 }
 
 class ForgeService {
+  /**
+   * 异步生成 Forge 摘要（不阻塞主流程）
+   * 在 Forge 创建或更新后调用，后台生成摘要并更新数据库
+   * @param forgeId Forge ID
+   * @param mcpTools MCP 工具列表
+   */
+  static async triggerSummaryGeneration(
+    forgeId: number,
+    mcpTools: McpToolSelection[]
+  ): Promise<void> {
+    // 如果没有 MCP 工具，不生成摘要
+    if (!mcpTools || mcpTools.length === 0) {
+      return;
+    }
+
+    // 异步执行，不阻塞主流程
+    setImmediate(async () => {
+      try {
+        const gateway = await loadGateway();
+
+        // 将 MCP 工具转换为 Gateway 需要的格式
+        const tools = mcpTools.flatMap((mt) =>
+          mt.tools.map((t) => ({
+            name: t.name,
+            description: t.description || "",
+          }))
+        );
+
+        // 调用 Gateway 生成摘要
+        const summary = await gateway.generateForgeSummary({ mcpTools: tools });
+
+        // 更新数据库
+        await ForgeDAO.updateSummary(forgeId, summary);
+      } catch (error) {
+        // 摘要生成失败不影响主流程，仅记录日志
+        console.error(`[ForgeService] 摘要生成失败 (forgeId: ${forgeId}):`, error);
+      }
+    });
+  }
+
   /**
    * 获取 Forge 列表
    */
@@ -132,6 +177,9 @@ class ForgeService {
         tools: mt.tools,
       }));
       await McpForgeDAO.bulkCreateWithTools(associations, forge.id);
+
+      // 异步触发摘要生成（不阻塞返回）
+      this.triggerSummaryGeneration(forge.id, mcpTools);
     } else if (mcpIds && mcpIds.length > 0) {
       // 兼容旧接口：只有 MCP ID，没有工具信息
       await McpForgeDAO.bulkCreate(mcpIds, forge.id);
@@ -174,6 +222,9 @@ class ForgeService {
         tools: mt.tools,
       }));
       await McpForgeDAO.updateForgeToolAssociations(id, associations);
+
+      // 异步触发摘要生成（不阻塞返回）
+      this.triggerSummaryGeneration(id, mcpTools);
     } else if (mcpIds !== undefined) {
       // 兼容旧接口：只有 MCP ID，没有工具信息
       await McpForgeDAO.updateForgeAssociations(id, mcpIds);
@@ -259,6 +310,14 @@ class ForgeService {
         systemPrompt: forge.systemPrompt,
       },
     };
+  }
+
+  /**
+   * 获取所有 Forge 摘要列表（用于意图分析）
+   * @param userId 当前用户 ID（可选，用于包含用户自己的非公开 Forge）
+   */
+  static async getAllForgeSummaries(userId?: number) {
+    return ForgeDAO.getAllSummaries(userId);
   }
 }
 
