@@ -11,6 +11,7 @@ export interface FeaturedTaskItem {
   coverImage: string | null;
   title: string;
   description: string | null;
+  clonePrompt: string | null;
   sortOrder: number;
   createdAt: Date;
   // 关联的任务信息
@@ -78,6 +79,7 @@ class FeaturedTaskService {
         // 优先使用自定义标题，否则使用任务原标题
         title: plain.title || plain.task?.title || "未命名任务",
         description: plain.description,
+        clonePrompt: plain.clonePrompt,
         sortOrder: plain.sortOrder,
         createdAt: item.createdAt,
         task: plain.task
