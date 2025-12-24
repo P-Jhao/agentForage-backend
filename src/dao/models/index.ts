@@ -10,6 +10,7 @@ import Document from "./Document.js";
 import Mcp from "./Mcp.js";
 import McpForge from "./McpForge.js";
 import ForgeFavorite from "./ForgeFavorite.js";
+import FeaturedTask from "./FeaturedTask.js";
 
 // 定义模型关联
 User.hasMany(Conversation, { foreignKey: "userId", as: "conversations" });
@@ -58,4 +59,19 @@ McpForge.belongsTo(Agent, { foreignKey: "forgeId", as: "forge" });
 Mcp.hasMany(McpForge, { foreignKey: "mcpId", as: "mcpForges" });
 Agent.hasMany(McpForge, { foreignKey: "forgeId", as: "mcpForges" });
 
-export { sequelize, User, Agent, Conversation, Message, Document, Mcp, McpForge, ForgeFavorite };
+// FeaturedTask 与 Conversation 的关联
+FeaturedTask.belongsTo(Conversation, { foreignKey: "taskUuid", targetKey: "uuid", as: "task" });
+Conversation.hasOne(FeaturedTask, { foreignKey: "taskUuid", sourceKey: "uuid", as: "featured" });
+
+export {
+  sequelize,
+  User,
+  Agent,
+  Conversation,
+  Message,
+  Document,
+  Mcp,
+  McpForge,
+  ForgeFavorite,
+  FeaturedTask,
+};
