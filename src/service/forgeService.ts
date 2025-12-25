@@ -216,6 +216,10 @@ class ForgeService {
 
     // 更新 MCP 工具关联（优先使用 mcpTools，兼容旧的 mcpIds）
     if (mcpTools !== undefined) {
+      // 获取当前的 MCP 工具关联，用于比较是否有变化
+      const currentAssociations = await McpForgeDAO.findByForgeId(id);
+      const mcpToolsChanged = this.hasMcpToolsChanged(currentAssociations, mcpTools);
+
       // 新接口：带工具信息
       const associations: McpToolAssociation[] = mcpTools.map((mt) => ({
         mcpId: mt.mcpId,
@@ -223,14 +227,56 @@ class ForgeService {
       }));
       await McpForgeDAO.updateForgeToolAssociations(id, associations);
 
-      // 异步触发摘要生成（不阻塞返回）
-      this.triggerSummaryGeneration(id, mcpTools);
+      // 只有 MCP 工具发生变化时才重新生成摘要
+      if (mcpToolsChanged) {
+        this.triggerSummaryGeneration(id, mcpTools);
+      }
     } else if (mcpIds !== undefined) {
       // 兼容旧接口：只有 MCP ID，没有工具信息
       await McpForgeDAO.updateForgeAssociations(id, mcpIds);
     }
 
     return { success: true };
+  }
+
+  /**
+   * 比较 MCP 工具是否发生变化
+   * @param currentAssociations 当前的 MCP 关联
+   * @param newMcpTools 新的 MCP 工具列表
+   * @returns 是否有变化
+   */
+  private static hasMcpToolsChanged(
+    currentAssociations: Array<{ mcpId: number; tools: ToolInfo[] }>,
+    newMcpTools: McpToolSelection[]
+  ): boolean {
+    // 构建当前工具的标识集合：mcpId_toolName
+    const currentToolSet = new Set<string>();
+    for (const assoc of currentAssociations) {
+      for (const tool of assoc.tools) {
+        currentToolSet.add(`${assoc.mcpId}_${tool.name}`);
+      }
+    }
+
+    // 构建新工具的标识集合
+    const newToolSet = new Set<string>();
+    for (const mt of newMcpTools) {
+      for (const tool of mt.tools) {
+        newToolSet.add(`${mt.mcpId}_${tool.name}`);
+      }
+    }
+
+    // 比较两个集合是否相同
+    if (currentToolSet.size !== newToolSet.size) {
+      return true;
+    }
+
+    for (const toolId of currentToolSet) {
+      if (!newToolSet.has(toolId)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
