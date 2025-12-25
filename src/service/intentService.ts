@@ -46,10 +46,16 @@ export interface ForgeAnalyzeResult {
   originalQuery: string;
 }
 
+// MCP 工具选择（精确到工具级别）
+interface MCPToolSelectionResult {
+  mcpId: number;
+  toolNames: string[];
+}
+
 // MCP 分析结果
 export interface MCPAnalyzeResult {
   type: "create_forge" | "not_supported";
-  mcpIds?: number[];
+  mcpTools?: MCPToolSelectionResult[];
   originalQuery: string;
 }
 

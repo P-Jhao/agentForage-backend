@@ -114,7 +114,7 @@ describe("IntentService - 属性 4：意图分析流程顺序性", () => {
     // 设置 MCP 分析返回创建 Forge
     mockAnalyzeMCPIntent.mockResolvedValue({
       type: "create_forge",
-      mcpIds: [1],
+      mcpTools: [{ mcpId: 1, toolNames: ["test_tool"] }],
       originalQuery: "test",
     });
 
