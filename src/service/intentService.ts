@@ -53,7 +53,35 @@ export interface MCPAnalyzeResult {
   originalQuery: string;
 }
 
+// 统一意图分析结果
+export type IntentAnalyzeResult = ForgeAnalyzeResult | MCPAnalyzeResult;
+
 class IntentService {
+  /**
+   * 统一意图分析
+   * 先尝试匹配现有 Forge，如果没有匹配则分析 MCP 工具
+   */
+  static async analyzeIntent(params: AnalyzeForgeParams): Promise<IntentAnalyzeResult> {
+    const { userInput, userId, sessionId } = params;
+
+    // 第一阶段：尝试匹配现有 Forge
+    const forgeResult = await this.analyzeForgeIntent(params);
+
+    // 如果匹配到 Forge，直接返回
+    if (forgeResult.type === "use_existing_forge") {
+      return forgeResult;
+    }
+
+    // 第二阶段：分析 MCP 工具
+    const mcpResult = await this.analyzeMCPIntent({
+      userInput,
+      userId,
+      sessionId,
+    });
+
+    return mcpResult;
+  }
+
   /**
    * 分析 Forge 意图
    * 根据用户输入和现有 Forge 摘要，判断是否有匹配的 Forge

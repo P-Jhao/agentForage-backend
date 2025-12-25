@@ -25,39 +25,15 @@ export interface MCPEvent {
   };
 }
 
-// 智能意图路由 SSE 事件类型
-export interface IntentSSEEvent {
-  type:
-    | "intent:analyze_start"
-    | "intent:analyze_result"
-    | "intent:config_start"
-    | "intent:config_chunk"
-    | "intent:config_done"
-    | "intent:config_complete"
-    | "intent:cancelled"
-    | "intent:error";
-  sessionId: string;
-  data?: unknown;
-}
-
 // 用户连接信息
 interface UserConnection {
   userId: number;
   res: ServerResponse;
 }
 
-// 意图事件订阅信息
-interface IntentSubscription {
-  userId: number;
-  sessionId: string;
-}
-
 class TaskEventService {
   // 连接池：userId -> 连接列表（一个用户可能有多个标签页）
   private connections: Map<number, UserConnection[]> = new Map();
-
-  // 意图事件订阅：sessionId -> 订阅信息
-  private intentSubscriptions: Map<string, IntentSubscription> = new Map();
 
   /**
    * 添加用户连接
@@ -197,164 +173,6 @@ class TaskEventService {
       taskUuid,
       data: { title },
     });
-  }
-
-  // ========== 智能意图路由事件 ==========
-
-  /**
-   * 订阅意图事件
-   * @param userId 用户 ID
-   * @param sessionId 会话 ID
-   */
-  subscribeIntent(userId: number, sessionId: string) {
-    this.intentSubscriptions.set(sessionId, { userId, sessionId });
-    console.log(`[TaskEventService] 用户 ${userId} 订阅意图事件: ${sessionId}`);
-  }
-
-  /**
-   * 取消订阅意图事件
-   * @param sessionId 会话 ID
-   */
-  unsubscribeIntent(sessionId: string) {
-    const subscription = this.intentSubscriptions.get(sessionId);
-    if (subscription) {
-      this.intentSubscriptions.delete(sessionId);
-      console.log(`[TaskEventService] 取消意图事件订阅: ${sessionId}`);
-    }
-  }
-
-  /**
-   * 检查是否已订阅意图事件
-   * @param sessionId 会话 ID
-   */
-  isIntentSubscribed(sessionId: string): boolean {
-    return this.intentSubscriptions.has(sessionId);
-  }
-
-  /**
-   * 推送意图事件给指定会话
-   * @param sessionId 会话 ID
-   * @param event 意图事件
-   */
-  pushIntentEvent(sessionId: string, event: Omit<IntentSSEEvent, "sessionId">) {
-    const subscription = this.intentSubscriptions.get(sessionId);
-    if (!subscription) {
-      console.log(`[TaskEventService] 意图事件订阅不存在: ${sessionId}`);
-      return;
-    }
-
-    const userConnections = this.connections.get(subscription.userId);
-    if (!userConnections || userConnections.length === 0) {
-      console.log(`[TaskEventService] 用户 ${subscription.userId} 无活跃连接`);
-      return;
-    }
-
-    const fullEvent: IntentSSEEvent = {
-      ...event,
-      sessionId,
-    };
-
-    const data = `data: ${JSON.stringify(fullEvent)}\n\n`;
-
-    for (const conn of userConnections) {
-      try {
-        conn.res.write(data);
-      } catch (error) {
-        console.error(`[TaskEventService] 推送意图事件失败:`, error);
-        this.removeConnection(subscription.userId, conn.res);
-      }
-    }
-  }
-
-  /**
-   * 推送意图分析开始事件
-   */
-  pushIntentAnalyzeStart(sessionId: string) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:analyze_start",
-    });
-  }
-
-  /**
-   * 推送意图分析结果事件
-   */
-  pushIntentAnalyzeResult(sessionId: string, result: unknown) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:analyze_result",
-      data: result,
-    });
-  }
-
-  /**
-   * 推送配置生成开始事件
-   */
-  pushIntentConfigStart(sessionId: string, field: "name" | "description" | "systemPrompt") {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:config_start",
-      data: { field },
-    });
-  }
-
-  /**
-   * 推送配置生成内容块事件
-   */
-  pushIntentConfigChunk(
-    sessionId: string,
-    field: "name" | "description" | "systemPrompt",
-    content: string
-  ) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:config_chunk",
-      data: { field, content },
-    });
-  }
-
-  /**
-   * 推送配置生成完成事件
-   */
-  pushIntentConfigDone(
-    sessionId: string,
-    field: "name" | "description" | "systemPrompt",
-    content: string
-  ) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:config_done",
-      data: { field, content },
-    });
-  }
-
-  /**
-   * 推送配置生成全部完成事件
-   */
-  pushIntentConfigComplete(sessionId: string) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:config_complete",
-    });
-    // 完成后自动取消订阅
-    this.unsubscribeIntent(sessionId);
-  }
-
-  /**
-   * 推送意图操作取消事件
-   */
-  pushIntentCancelled(sessionId: string) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:cancelled",
-    });
-    // 取消后自动取消订阅
-    this.unsubscribeIntent(sessionId);
-  }
-
-  /**
-   * 推送意图操作错误事件
-   */
-  pushIntentError(sessionId: string, message: string) {
-    this.pushIntentEvent(sessionId, {
-      type: "intent:error",
-      data: { message },
-    });
-    // 错误后自动取消订阅
-    this.unsubscribeIntent(sessionId);
   }
 }
 
