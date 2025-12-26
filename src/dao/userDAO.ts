@@ -7,7 +7,15 @@ import CryptoService from "../service/cryptoService.js";
 
 interface CreateUserData {
   username: string;
+  nickname: string;
   password: string;
+}
+
+// 用户资料更新数据
+interface UpdateProfileData {
+  nickname?: string;
+  avatar?: string | null;
+  email?: string | null;
 }
 
 class UserDAO {
@@ -25,6 +33,25 @@ class UserDAO {
 
   static async updateById(id: number, data: Partial<CreateUserData>) {
     return await User.update(data, { where: { id } });
+  }
+
+  /**
+   * 更新用户资料（头像、邮箱等）
+   */
+  static async updateProfile(userId: number, data: UpdateProfileData): Promise<boolean> {
+    const [affectedRows] = await User.update(data, { where: { id: userId } });
+    return affectedRows > 0;
+  }
+
+  /**
+   * 更新用户密码
+   */
+  static async updatePassword(userId: number, hashedPassword: string): Promise<boolean> {
+    const [affectedRows] = await User.update(
+      { password: hashedPassword },
+      { where: { id: userId } }
+    );
+    return affectedRows > 0;
   }
 
   /**

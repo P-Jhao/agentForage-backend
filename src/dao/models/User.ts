@@ -16,19 +16,28 @@ interface CustomModelConfig {
 
 interface UserAttributes {
   id: number;
-  username: string;
+  username: string; // 账号，登录用，唯一
+  nickname: string; // 名称，显示用，可修改
   password: string;
+  avatar: string | null; // 头像 URL
+  email: string | null; // 邮箱
   apiQuota: number;
   role: "user" | "root"; // 用户角色：普通用户 / 超级管理员
   modelConfig: CustomModelConfig | null; // 自定义模型配置
 }
 
-type UserCreationAttributes = Optional<UserAttributes, "id" | "apiQuota" | "role" | "modelConfig">;
+type UserCreationAttributes = Optional<
+  UserAttributes,
+  "id" | "nickname" | "avatar" | "email" | "apiQuota" | "role" | "modelConfig"
+>;
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   declare id: number;
   declare username: string;
+  declare nickname: string;
   declare password: string;
+  declare avatar: string | null;
+  declare email: string | null;
   declare apiQuota: number;
   declare role: "user" | "root";
   declare modelConfig: CustomModelConfig | null;
@@ -47,12 +56,30 @@ User.init(
       type: DataTypes.STRING(50),
       allowNull: false,
       unique: true,
-      comment: "用户名",
+      comment: "账号（登录用，唯一）",
+    },
+    nickname: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: "",
+      comment: "名称（显示用，可修改）",
     },
     password: {
       type: DataTypes.STRING(255),
       allowNull: false,
       comment: "密码（加密）",
+    },
+    avatar: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null,
+      comment: "头像 URL",
+    },
+    email: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      defaultValue: null,
+      comment: "邮箱",
     },
     apiQuota: {
       type: DataTypes.INTEGER,
