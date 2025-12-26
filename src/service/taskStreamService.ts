@@ -236,6 +236,19 @@ class TaskStreamService {
     const stream = this.streams.get(taskUuid);
     return stream ? [...stream.buffer] : null;
   }
+
+  /**
+   * 清空任务流的缓冲区
+   * 在消息保存到数据库后调用，避免缓冲区无限增长
+   */
+  clearBuffer(taskUuid: string): void {
+    const stream = this.streams.get(taskUuid);
+    if (stream) {
+      const bufferSize = stream.buffer.length;
+      stream.buffer = [];
+      console.log(`[TaskStreamService] 任务 ${taskUuid} 缓冲区已清空，清理了 ${bufferSize} 条数据`);
+    }
+  }
 }
 
 // 导出单例

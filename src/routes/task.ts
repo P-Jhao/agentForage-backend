@@ -632,6 +632,10 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           });
           currentSummaryContent = "";
         }
+
+        // 内容已保存到数据库，清空缓冲区
+        // 新订阅者将从数据库加载历史消息，不需要从缓冲区追赶
+        TaskStreamService.clearBuffer(uuid);
       };
 
       // 构建内置工具激活上下文（从文件信息中提取路径和原始文件名）
@@ -668,6 +672,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
                 content: currentTextContent,
               });
               currentTextContent = "";
+              // 清空缓冲区
+              TaskStreamService.clearBuffer(uuid);
             }
 
             // 如果有正在进行的 thinking 段落，先保存到数据库
@@ -679,6 +685,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
                 content: currentThinkingContent,
               });
               currentThinkingContent = "";
+              // 清空缓冲区
+              TaskStreamService.clearBuffer(uuid);
             }
 
             // 创建工具调用消息（初始状态）
@@ -740,6 +748,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
                   content: currentThinkingContent,
                 });
                 currentThinkingContent = "";
+                // 清空缓冲区
+                TaskStreamService.clearBuffer(uuid);
               }
               currentTextContent += chunkData;
             }
@@ -775,6 +785,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
                   content: currentTextContent,
                 });
                 currentTextContent = "";
+                // 清空缓冲区
+                TaskStreamService.clearBuffer(uuid);
               }
               // 累积 summary 内容
               currentSummaryContent += chunkData;
@@ -840,6 +852,9 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           content: currentSummaryContent,
         });
       }
+
+      // 所有内容已保存，清空缓冲区
+      TaskStreamService.clearBuffer(uuid);
 
       // 更新任务状态为 completed
       await TaskService.updateTaskStatus(uuid, "completed");
