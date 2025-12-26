@@ -565,43 +565,36 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       let wasAborted = false;
 
       // 辅助函数：保存已累积的内容到数据库
-      const saveAccumulatedContent = async (isAborted: boolean) => {
+      const saveAccumulatedContent = async () => {
         // 保存 thinking 段落
         if (currentThinkingContent) {
-          const content = isAborted
-            ? currentThinkingContent + "\n\n[已中断]"
-            : currentThinkingContent;
           await MessageDAO.createAssistantTextMessage({
             conversationId: task.id,
             role: "assistant",
             type: "thinking",
-            content,
+            content: currentThinkingContent,
           });
           currentThinkingContent = "";
         }
 
         // 保存 chat 段落
         if (currentTextContent) {
-          const content = isAborted ? currentTextContent + "\n\n[已中断]" : currentTextContent;
           await MessageDAO.createAssistantTextMessage({
             conversationId: task.id,
             role: "assistant",
             type: "chat",
-            content,
+            content: currentTextContent,
           });
           currentTextContent = "";
         }
 
         // 保存 summary 段落
         if (currentSummaryContent) {
-          const content = isAborted
-            ? currentSummaryContent + "\n\n[已中断]"
-            : currentSummaryContent;
           await MessageDAO.createAssistantTextMessage({
             conversationId: task.id,
             role: "assistant",
             type: "summary",
-            content,
+            content: currentSummaryContent,
           });
           currentSummaryContent = "";
         }
@@ -771,8 +764,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         ) {
           console.log(`[task.ts] LLM 流被中断: ${uuid}`);
           wasAborted = true;
-          // 保存已累积的内容（标记为已中断）
-          await saveAccumulatedContent(true);
+          // 保存已累积的内容
+          await saveAccumulatedContent();
         } else {
           // 其他错误，重新抛出
           throw streamError;
@@ -781,7 +774,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 如果没有被中断，正常保存内容
       if (!wasAborted) {
-        await saveAccumulatedContent(false);
+        await saveAccumulatedContent();
       }
 
       // 保存最后一个 thinking 段落（兼容旧逻辑，如果 saveAccumulatedContent 没有清空的话）
