@@ -442,6 +442,29 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 保存用户消息（包含文件信息）
       await MessageDAO.createUserMessage(task.id, content, files, userMessageType);
 
+      // 如果是第一条消息（标题为"新会话"），立即异步生成标题
+      // 不等待 LLM 回复，这样即使用户中断也能有标题
+      if (task.title === "新会话") {
+        (async () => {
+          try {
+            console.log("[task.ts] 开始异步生成标题...");
+            const generatedTitle = await generateTitle(content);
+            if (generatedTitle) {
+              await TaskService.updateTaskTitle(uuid, generatedTitle);
+              console.log("[task.ts] 标题生成成功:", generatedTitle);
+            } else {
+              const fallbackTitle = truncateTitle(content);
+              await TaskService.updateTaskTitle(uuid, fallbackTitle);
+              console.log("[task.ts] 标题生成失败，使用截断标题:", fallbackTitle);
+            }
+          } catch (error) {
+            console.error("[task.ts] 标题生成异常:", error);
+            const fallbackTitle = truncateTitle(content);
+            await TaskService.updateTaskTitle(uuid, fallbackTitle).catch(() => {});
+          }
+        })();
+      }
+
       // 更新任务状态为 running
       await TaskService.updateTaskStatus(uuid, "running");
 
@@ -825,34 +848,6 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       MessageSummaryService.checkAndTriggerSummary(task.id).catch((error) => {
         console.error("[task.ts] 触发消息总结失败:", error);
       });
-
-      // 如果是第一条消息（标题为"新会话"），异步生成标题
-      // 如果开启了增强功能，使用增强后的提示词生成标题
-      if (task.title === "新会话") {
-        const titleContent =
-          enhanceMode !== "off" && finalPrompt !== content ? finalPrompt : content;
-        (async () => {
-          try {
-            console.log("[task.ts] 开始异步生成标题...");
-            const generatedTitle = await generateTitle(titleContent);
-            if (generatedTitle) {
-              // LLM 生成成功，更新标题并推送
-              await TaskService.updateTaskTitle(uuid, generatedTitle);
-              console.log("[task.ts] 标题生成成功:", generatedTitle);
-            } else {
-              // LLM 生成失败，降级为截断标题
-              const fallbackTitle = truncateTitle(titleContent);
-              await TaskService.updateTaskTitle(uuid, fallbackTitle);
-              console.log("[task.ts] 标题生成失败，使用截断标题:", fallbackTitle);
-            }
-          } catch (error) {
-            console.error("[task.ts] 标题生成异常:", error);
-            // 异常时也降级为截断标题
-            const fallbackTitle = truncateTitle(titleContent);
-            await TaskService.updateTaskTitle(uuid, fallbackTitle).catch(() => {});
-          }
-        })();
-      }
 
       // 发送结束标记并结束流（会关闭所有订阅者连接）
       TaskStreamService.write(uuid, { type: "done" });
