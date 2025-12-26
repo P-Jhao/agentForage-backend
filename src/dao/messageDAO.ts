@@ -23,6 +23,7 @@ interface CreateTextMessageData {
   role: MessageRole;
   type: "chat" | "thinking" | "summary" | "error";
   content: string;
+  aborted?: boolean; // 是否因中断而不完整
 }
 
 // 创建工具调用消息参数
@@ -63,6 +64,8 @@ export interface FlatMessage {
   success?: boolean;
   // 用户上传的文件
   files?: UploadedFileInfo[];
+  // 中断标记
+  aborted?: boolean;
   createdAt: Date;
 }
 
@@ -95,11 +98,13 @@ class MessageDAO {
    * @param conversationId 会话 ID
    * @param type 增强过程消息类型
    * @param content 消息内容
+   * @param aborted 是否因中断而不完整
    */
   static async createEnhanceProcessMessage(
     conversationId: number,
     type: EnhanceProcessType,
-    content: string
+    content: string,
+    aborted: boolean = false
   ) {
     // 确定消息角色：user_original 和 user_answer 是用户消息，其他是 assistant 消息
     const role: MessageRole =
@@ -110,6 +115,7 @@ class MessageDAO {
       role,
       type,
       content,
+      aborted: aborted || null,
     });
   }
 
@@ -122,6 +128,7 @@ class MessageDAO {
       role: "assistant",
       type: data.type,
       content: data.content,
+      aborted: data.aborted || null,
     });
   }
 
@@ -197,6 +204,11 @@ class MessageDAO {
         base.files = JSON.parse(msg.files);
       }
 
+      // 添加中断标记
+      if (msg.aborted) {
+        base.aborted = true;
+      }
+
       return base;
     });
   }
@@ -248,6 +260,11 @@ class MessageDAO {
       // 用户消息添加文件信息
       if (msg.role === "user" && msg.files) {
         base.files = JSON.parse(msg.files);
+      }
+
+      // 添加中断标记
+      if (msg.aborted) {
+        base.aborted = true;
       }
 
       return base;

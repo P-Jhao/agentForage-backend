@@ -75,11 +75,13 @@ interface MessageAttributes {
   success: boolean | null;
   // 用户上传的文件信息（JSON 字符串）
   files: string | null;
+  // 中断标记（消息是否因用户中断而不完整）
+  aborted: boolean | null;
 }
 
 type MessageCreationAttributes = Optional<
   MessageAttributes,
-  "id" | "callId" | "toolName" | "arguments" | "result" | "success" | "files"
+  "id" | "callId" | "toolName" | "arguments" | "result" | "success" | "files" | "aborted"
 >;
 
 class Message
@@ -97,6 +99,7 @@ class Message
   declare result: string | null;
   declare success: boolean | null;
   declare files: string | null;
+  declare aborted: boolean | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -191,6 +194,12 @@ Message.init(
       type: DataTypes.TEXT,
       allowNull: true,
       comment: "用户上传的文件信息 JSON（user 消息使用）",
+    },
+    aborted: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: "消息是否因用户中断而不完整",
     },
   },
   {

@@ -588,7 +588,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       let wasAborted = false;
 
       // 辅助函数：保存已累积的内容到数据库
-      const saveAccumulatedContent = async () => {
+      const saveAccumulatedContent = async (aborted: boolean = false) => {
         // 保存 thinking 段落
         if (currentThinkingContent) {
           await MessageDAO.createAssistantTextMessage({
@@ -596,6 +596,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
             role: "assistant",
             type: "thinking",
             content: currentThinkingContent,
+            aborted,
           });
           currentThinkingContent = "";
         }
@@ -607,6 +608,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
             role: "assistant",
             type: "chat",
             content: currentTextContent,
+            aborted,
           });
           currentTextContent = "";
         }
@@ -618,6 +620,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
             role: "assistant",
             type: "summary",
             content: currentSummaryContent,
+            aborted,
           });
           currentSummaryContent = "";
         }
@@ -787,8 +790,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         ) {
           console.log(`[task.ts] LLM 流被中断: ${uuid}`);
           wasAborted = true;
-          // 保存已累积的内容
-          await saveAccumulatedContent();
+          // 保存已累积的内容（标记为已中断）
+          await saveAccumulatedContent(true);
         } else {
           // 其他错误，重新抛出
           throw streamError;
