@@ -2,6 +2,9 @@
  * Forge 服务
  * 处理 Forge（Agent）相关的业务逻辑
  */
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
 import ForgeDAO from "../dao/forgeDAO.js";
 import ForgeFavoriteDAO from "../dao/forgeFavoriteDAO.js";
@@ -9,6 +12,12 @@ import McpForgeDAO, { type McpToolAssociation } from "../dao/mcpForgeDAO.js";
 import TaskService from "./taskService.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
 import type { ToolInfo } from "../dao/models/McpForge.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 头像上传目录
+const avatarUploadDir = path.join(__dirname, "../../public/uploads/avatars");
 
 // 动态导入 Gateway（用于摘要生成）
 const loadGateway = async () => {
@@ -148,6 +157,45 @@ class ForgeService {
   }
 
   /**
+   * 判断是否为用户上传的头像（非默认头像）
+   */
+  static isUploadedAvatar(avatar: string | null): boolean {
+    if (!avatar) return false;
+    // 用户上传的头像路径包含 /uploads/avatars/
+    return avatar.includes("/uploads/avatars/");
+  }
+
+  /**
+   * 删除用户上传的头像文件
+   * 只删除 uploads/avatars 目录下的文件，默认头像不处理
+   */
+  static async deleteAvatarFile(avatar: string | null): Promise<void> {
+    if (!avatar || !this.isUploadedAvatar(avatar)) {
+      return;
+    }
+
+    try {
+      // 提取文件名（avatar 格式为 /api/uploads/avatars/xxx.png）
+      const filename = path.basename(avatar);
+      const filePath = path.join(avatarUploadDir, filename);
+
+      // 安全检查：确保文件在 avatars 目录内
+      const normalizedPath = path.normalize(filePath);
+      if (!normalizedPath.startsWith(path.normalize(avatarUploadDir))) {
+        console.warn(`[ForgeService] 跳过非法头像路径: ${avatar}`);
+        return;
+      }
+
+      if (fs.existsSync(filePath)) {
+        await fs.promises.unlink(filePath);
+        console.log(`[ForgeService] 已删除头像文件: ${filePath}`);
+      }
+    } catch (error) {
+      console.error(`[ForgeService] 删除头像文件失败:`, error);
+    }
+  }
+
+  /**
    * 创建 Forge
    * root 用户创建的为内置 Forge
    * 如果没有头像，随机分配一个默认头像
@@ -191,6 +239,7 @@ class ForgeService {
   /**
    * 更新 Forge
    * 权限检查：普通用户只能更新自己创建的非内置 Forge，root 可以更新所有
+   * 如果更换了头像，会删除旧的用户上传头像文件
    */
   static async updateForge(id: number, params: UpdateForgeParams, user: JwtPayload) {
     const forge = await ForgeDAO.findById(id);
@@ -210,6 +259,11 @@ class ForgeService {
 
     // 提取 mcpIds 和 mcpTools，不传给 ForgeDAO
     const { mcpIds, mcpTools, ...forgeParams } = params;
+
+    // 如果更换了头像，删除旧的用户上传头像文件
+    if (forgeParams.avatar !== undefined && forgeParams.avatar !== forge.avatar) {
+      await this.deleteAvatarFile(forge.avatar);
+    }
 
     // 更新 Forge 基本信息
     await ForgeDAO.update(id, forgeParams);
@@ -282,6 +336,7 @@ class ForgeService {
   /**
    * 删除 Forge
    * 权限检查：普通用户只能删除自己创建的非内置 Forge，root 可以删除所有
+   * 同时删除关联的用户上传头像文件
    */
   static async deleteForge(id: number, user: JwtPayload) {
     const forge = await ForgeDAO.findById(id);
@@ -298,6 +353,9 @@ class ForgeService {
     if (!canDelete) {
       throw Object.assign(new Error("无权限删除此 Forge"), { status: 403 });
     }
+
+    // 删除用户上传的头像文件
+    await this.deleteAvatarFile(forge.avatar);
 
     await ForgeDAO.delete(id);
     return { success: true };
