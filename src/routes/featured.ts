@@ -49,8 +49,17 @@ router.get("/check/:taskUuid", tokenAuth(), async (ctx) => {
  * POST /api/featured
  */
 router.post("/", tokenAuth(), adminAuth(), async (ctx) => {
-  const { taskUuid, coverImage, title, description, clonePrompt, sortOrder } = ctx.request
-    .body as SetFeaturedBody;
+  const {
+    taskUuid,
+    coverImage,
+    title,
+    description,
+    clonePrompt,
+    enableThinking,
+    enhanceMode,
+    smartRoutingEnabled,
+    sortOrder,
+  } = ctx.request.body as SetFeaturedBody;
 
   if (!taskUuid) {
     ctx.status = 400;
@@ -64,6 +73,9 @@ router.post("/", tokenAuth(), adminAuth(), async (ctx) => {
     title,
     description,
     clonePrompt,
+    enableThinking,
+    enhanceMode,
+    smartRoutingEnabled,
     sortOrder,
   });
 
