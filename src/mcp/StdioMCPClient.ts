@@ -25,6 +25,7 @@ export class StdioMCPClient extends MCPClientBase {
     this.transport = new StdioClientTransport({
       command: config.command!,
       args: config.args,
+      env: config.env,
     });
   }
 
