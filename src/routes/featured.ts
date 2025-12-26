@@ -15,6 +15,9 @@ interface SetFeaturedBody {
   title?: string;
   description?: string;
   clonePrompt?: string;
+  enableThinking?: boolean;
+  enhanceMode?: string;
+  smartRoutingEnabled?: boolean;
   sortOrder?: number;
 }
 

@@ -21,6 +21,10 @@ export interface FeaturedTaskItem {
   title: string;
   description: string | null;
   clonePrompt: string | null;
+  // 一键做同款时的设置选项
+  enableThinking: boolean;
+  enhanceMode: string;
+  smartRoutingEnabled: boolean;
   sortOrder: number;
   createdAt: Date;
   // 关联的任务信息
@@ -43,6 +47,9 @@ interface SetFeaturedParams {
   title?: string;
   description?: string;
   clonePrompt?: string;
+  enableThinking?: boolean;
+  enhanceMode?: string;
+  smartRoutingEnabled?: boolean;
   sortOrder?: number;
 }
 
@@ -89,6 +96,9 @@ class FeaturedTaskService {
         title: plain.title || plain.task?.title || "未命名任务",
         description: plain.description,
         clonePrompt: plain.clonePrompt,
+        enableThinking: plain.enableThinking,
+        enhanceMode: plain.enhanceMode,
+        smartRoutingEnabled: plain.smartRoutingEnabled,
         sortOrder: plain.sortOrder,
         createdAt: item.createdAt,
         task: plain.task
@@ -115,7 +125,17 @@ class FeaturedTaskService {
    * 更新时如果更换了封面图，会删除旧的封面图文件
    */
   async setFeatured(params: SetFeaturedParams): Promise<FeaturedTask> {
-    const { taskUuid, coverImage, title, description, clonePrompt, sortOrder } = params;
+    const {
+      taskUuid,
+      coverImage,
+      title,
+      description,
+      clonePrompt,
+      enableThinking,
+      enhanceMode,
+      smartRoutingEnabled,
+      sortOrder,
+    } = params;
 
     // 检查任务是否存在
     const task = await Conversation.findOne({ where: { uuid: taskUuid } });
@@ -150,6 +170,10 @@ class FeaturedTaskService {
         title: title !== undefined ? title : existing.title,
         description: description !== undefined ? description : existing.description,
         clonePrompt: clonePrompt !== undefined ? clonePrompt : existing.clonePrompt,
+        enableThinking: enableThinking !== undefined ? enableThinking : existing.enableThinking,
+        enhanceMode: enhanceMode !== undefined ? enhanceMode : existing.enhanceMode,
+        smartRoutingEnabled:
+          smartRoutingEnabled !== undefined ? smartRoutingEnabled : existing.smartRoutingEnabled,
         sortOrder: sortOrder !== undefined ? sortOrder : existing.sortOrder,
       });
       return existing;
@@ -162,6 +186,9 @@ class FeaturedTaskService {
       title: title || null,
       description: description || null,
       clonePrompt: clonePrompt || null,
+      enableThinking: enableThinking ?? false,
+      enhanceMode: enhanceMode || "off",
+      smartRoutingEnabled: smartRoutingEnabled ?? false,
       sortOrder: sortOrder || 0,
     });
   }

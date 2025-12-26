@@ -12,12 +12,24 @@ interface FeaturedTaskAttributes {
   title: string | null;
   description: string | null;
   clonePrompt: string | null;
+  // 一键做同款时的设置选项
+  enableThinking: boolean;
+  enhanceMode: string;
+  smartRoutingEnabled: boolean;
   sortOrder: number;
 }
 
 type FeaturedTaskCreationAttributes = Optional<
   FeaturedTaskAttributes,
-  "id" | "coverImage" | "title" | "description" | "clonePrompt" | "sortOrder"
+  | "id"
+  | "coverImage"
+  | "title"
+  | "description"
+  | "clonePrompt"
+  | "enableThinking"
+  | "enhanceMode"
+  | "smartRoutingEnabled"
+  | "sortOrder"
 >;
 
 class FeaturedTask
@@ -30,6 +42,9 @@ class FeaturedTask
   declare title: string | null;
   declare description: string | null;
   declare clonePrompt: string | null;
+  declare enableThinking: boolean;
+  declare enhanceMode: string;
+  declare smartRoutingEnabled: boolean;
   declare sortOrder: number;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -71,6 +86,24 @@ FeaturedTask.init(
       allowNull: true,
       defaultValue: null,
       comment: "一键做同款的 prompt 内容",
+    },
+    enableThinking: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: "一键做同款时是否启用深度思考",
+    },
+    enhanceMode: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "off",
+      comment: "一键做同款时的增强模式：off/quick/smart/multi",
+    },
+    smartRoutingEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: "一键做同款时是否启用智能路由",
     },
     sortOrder: {
       type: DataTypes.INTEGER,
