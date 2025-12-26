@@ -49,6 +49,14 @@ class PromptEnhanceService {
         // 检查是否已被中断
         if (TaskAbortService.isAborted(uuid)) {
           console.log(`[PromptEnhanceService] 快速增强被中断: ${uuid}`);
+          // 保存已累积的增强内容（标记为已中断）
+          if (enhancedPrompt) {
+            await MessageDAO.createEnhanceProcessMessage(
+              conversationId,
+              "enhancer",
+              enhancedPrompt + "\n\n[已中断]"
+            );
+          }
           return { success: false, enhancedPrompt: userPrompt, error: "任务已被中断" };
         }
 
@@ -107,6 +115,14 @@ class PromptEnhanceService {
         // 检查是否已被中断
         if (TaskAbortService.isAborted(uuid)) {
           console.log(`[PromptEnhanceService] 智能迭代审查被中断: ${uuid}`);
+          // 保存已累积的审查内容（标记为已中断）
+          if (reviewerOutput) {
+            await MessageDAO.createEnhanceProcessMessage(
+              conversationId,
+              "reviewer",
+              reviewerOutput + "\n\n[已中断]"
+            );
+          }
           return { success: false, reviewerOutput: "", questionerOutput: "" };
         }
 
@@ -128,6 +144,14 @@ class PromptEnhanceService {
         // 检查是否已被中断
         if (TaskAbortService.isAborted(uuid)) {
           console.log(`[PromptEnhanceService] 智能迭代提问被中断: ${uuid}`);
+          // 保存已累积的提问内容（标记为已中断）
+          if (questionerOutput) {
+            await MessageDAO.createEnhanceProcessMessage(
+              conversationId,
+              "questioner",
+              questionerOutput + "\n\n[已中断]"
+            );
+          }
           return { success: false, reviewerOutput, questionerOutput: "" };
         }
 
@@ -171,6 +195,14 @@ class PromptEnhanceService {
         // 检查是否已被中断
         if (TaskAbortService.isAborted(uuid)) {
           console.log(`[PromptEnhanceService] 智能迭代增强被中断: ${uuid}`);
+          // 保存已累积的增强内容（标记为已中断）
+          if (enhancedPrompt) {
+            await MessageDAO.createEnhanceProcessMessage(
+              conversationId,
+              "enhancer",
+              enhancedPrompt + "\n\n[已中断]"
+            );
+          }
           return { success: false, enhancedPrompt: context.originalPrompt, error: "任务已被中断" };
         }
 
@@ -226,6 +258,14 @@ class PromptEnhanceService {
         // 检查是否已被中断
         if (TaskAbortService.isAborted(uuid)) {
           console.log(`[PromptEnhanceService] 多角度专家分析被中断: ${uuid}`);
+          // 保存已累积的专家分析内容（标记为已中断）
+          if (expertOutput) {
+            await MessageDAO.createEnhanceProcessMessage(
+              conversationId,
+              "expert",
+              expertOutput + "\n\n[已中断]"
+            );
+          }
           return { success: false, enhancedPrompt: userPrompt, error: "任务已被中断" };
         }
 
@@ -251,6 +291,14 @@ class PromptEnhanceService {
         // 检查是否已被中断
         if (TaskAbortService.isAborted(uuid)) {
           console.log(`[PromptEnhanceService] 多角度增强被中断: ${uuid}`);
+          // 保存已累积的增强内容（标记为已中断）
+          if (enhancedPrompt) {
+            await MessageDAO.createEnhanceProcessMessage(
+              conversationId,
+              "enhancer",
+              enhancedPrompt + "\n\n[已中断]"
+            );
+          }
           return { success: false, enhancedPrompt: userPrompt, error: "任务已被中断" };
         }
 
