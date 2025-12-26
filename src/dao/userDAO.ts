@@ -3,6 +3,7 @@
  */
 import { User } from "./models/index.js";
 import type { CustomModelConfig } from "./models/User.js";
+import CryptoService from "../service/cryptoService.js";
 
 interface CreateUserData {
   username: string;
@@ -28,19 +29,49 @@ class UserDAO {
 
   /**
    * 获取用户的模型配置
+   * 自动解密 apiKey
    */
   static async getModelConfig(userId: number): Promise<CustomModelConfig | null> {
     const user = await User.findByPk(userId, {
       attributes: ["modelConfig"],
     });
-    return user?.modelConfig ?? null;
+    const config = user?.modelConfig;
+    if (!config) return null;
+
+    // 如果有加密的 apiKey，解密后返回
+    if (config.apiKey && config.mode === "custom") {
+      try {
+        config.apiKey = CryptoService.aesDecrypt(config.apiKey);
+      } catch (error) {
+        console.error("[UserDAO] 解密 apiKey 失败:", error);
+        // 解密失败时返回空，避免泄露加密数据
+        config.apiKey = "";
+      }
+    }
+
+    return config;
   }
 
   /**
    * 更新用户的模型配置
+   * 自动加密 apiKey 后存储
    */
   static async updateModelConfig(userId: number, config: CustomModelConfig): Promise<boolean> {
-    const [affectedRows] = await User.update({ modelConfig: config }, { where: { id: userId } });
+    // 如果有 apiKey，加密后存储
+    const configToSave = { ...config };
+    if (configToSave.apiKey && configToSave.mode === "custom") {
+      try {
+        configToSave.apiKey = CryptoService.aesEncrypt(configToSave.apiKey);
+      } catch (error) {
+        console.error("[UserDAO] 加密 apiKey 失败:", error);
+        throw new Error("加密 apiKey 失败");
+      }
+    }
+
+    const [affectedRows] = await User.update(
+      { modelConfig: configToSave },
+      { where: { id: userId } }
+    );
     return affectedRows > 0;
   }
 }

@@ -12,6 +12,7 @@ import forgeRoutes from "./forge.js";
 import uploadRoutes from "./upload.js";
 import featuredRoutes from "./featured.js";
 import intentRoutes from "./intent.js";
+import cryptoRoutes from "./crypto.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -31,5 +32,6 @@ router.use("/forge", forgeRoutes.routes());
 router.use("/upload", uploadRoutes.routes());
 router.use("/featured", featuredRoutes.routes());
 router.use("/intent", intentRoutes.routes());
+router.use("/crypto", cryptoRoutes.routes());
 
 export default router;
