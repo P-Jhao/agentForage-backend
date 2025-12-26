@@ -2,7 +2,16 @@
  * 推荐示例服务
  * 处理推荐示例的业务逻辑
  */
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { FeaturedTask, Conversation, Agent } from "../dao/models/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 图片上传目录
+const imageUploadDir = path.join(__dirname, "../../public/uploads/images");
 
 // 推荐示例列表项（包含任务信息）
 export interface FeaturedTaskItem {
@@ -103,6 +112,7 @@ class FeaturedTaskService {
 
   /**
    * 设置推荐示例（创建或更新）
+   * 更新时如果更换了封面图，会删除旧的封面图文件
    */
   async setFeatured(params: SetFeaturedParams): Promise<FeaturedTask> {
     const { taskUuid, coverImage, title, description, clonePrompt, sortOrder } = params;
@@ -117,6 +127,23 @@ class FeaturedTaskService {
     const existing = await FeaturedTask.findOne({ where: { taskUuid } });
 
     if (existing) {
+      // 如果更换了封面图，删除旧的封面图文件
+      if (coverImage !== undefined && coverImage !== existing.coverImage && existing.coverImage) {
+        try {
+          const filename = path.basename(existing.coverImage);
+          const filePath = path.join(imageUploadDir, filename);
+          const normalizedPath = path.normalize(filePath);
+          if (normalizedPath.startsWith(path.normalize(imageUploadDir))) {
+            if (fs.existsSync(filePath)) {
+              await fs.promises.unlink(filePath);
+              console.log(`[FeaturedTaskService] 已删除旧封面图: ${filePath}`);
+            }
+          }
+        } catch (error) {
+          console.error(`[FeaturedTaskService] 删除旧封面图失败:`, error);
+        }
+      }
+
       // 更新
       await existing.update({
         coverImage: coverImage !== undefined ? coverImage : existing.coverImage,
@@ -141,8 +168,37 @@ class FeaturedTaskService {
 
   /**
    * 取消推荐示例
+   * 同时删除关联的封面图文件
    */
   async removeFeatured(taskUuid: string): Promise<boolean> {
+    // 先获取推荐示例信息，用于删除封面图
+    const featured = await FeaturedTask.findOne({ where: { taskUuid } });
+    if (!featured) {
+      return false;
+    }
+
+    // 删除封面图文件
+    if (featured.coverImage) {
+      try {
+        // coverImage 格式为 /uploads/images/xxx.png，提取文件名
+        const filename = path.basename(featured.coverImage);
+        const filePath = path.join(imageUploadDir, filename);
+
+        // 安全检查：确保文件在 images 目录内
+        const normalizedPath = path.normalize(filePath);
+        if (normalizedPath.startsWith(path.normalize(imageUploadDir))) {
+          if (fs.existsSync(filePath)) {
+            await fs.promises.unlink(filePath);
+            console.log(`[FeaturedTaskService] 已删除封面图: ${filePath}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[FeaturedTaskService] 删除封面图失败:`, error);
+        // 不影响主流程，继续删除数据库记录
+      }
+    }
+
+    // 删除数据库记录
     const result = await FeaturedTask.destroy({ where: { taskUuid } });
     return result > 0;
   }
