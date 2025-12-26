@@ -10,16 +10,58 @@ import type { CustomModelConfig } from "../dao/userDAO.js";
 
 const router = new Router();
 
+// 认证请求体类型（密码是 RSA 加密的）
+interface AuthRequest {
+  username: string;
+  encryptedPassword: string; // RSA 加密后的密码
+}
+
 // 用户注册
 router.post("/register", async (ctx) => {
-  const { username, password } = ctx.request.body as { username: string; password: string };
+  const { username, encryptedPassword } = ctx.request.body as AuthRequest;
+
+  if (!username || !encryptedPassword) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "用户名和密码不能为空" };
+    return;
+  }
+
+  // RSA 解密密码
+  let password: string;
+  try {
+    password = CryptoService.rsaDecrypt(encryptedPassword);
+  } catch (error) {
+    console.error("[user.ts] RSA 解密密码失败:", error);
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "密码解密失败，请刷新页面重试" };
+    return;
+  }
+
   const result = await UserService.register({ username, password });
   ctx.body = { code: 200, message: "注册成功", data: result };
 });
 
 // 用户登录
 router.post("/login", async (ctx) => {
-  const { username, password } = ctx.request.body as { username: string; password: string };
+  const { username, encryptedPassword } = ctx.request.body as AuthRequest;
+
+  if (!username || !encryptedPassword) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "用户名和密码不能为空" };
+    return;
+  }
+
+  // RSA 解密密码
+  let password: string;
+  try {
+    password = CryptoService.rsaDecrypt(encryptedPassword);
+  } catch (error) {
+    console.error("[user.ts] RSA 解密密码失败:", error);
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "密码解密失败，请刷新页面重试" };
+    return;
+  }
+
   const result = await UserService.login({ username, password });
   ctx.body = { code: 200, message: "登录成功", data: result };
 });
