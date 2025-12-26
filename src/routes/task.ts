@@ -499,15 +499,19 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       } else if (enhanceMode === "smart") {
         if (iterateContext) {
           // 智能迭代模式 - 用户已回复澄清问题，执行增强阶段
-          console.log("[task.ts] 执行智能迭代增强阶段...");
+          console.log("[task.ts] ========== 智能迭代增强阶段 ==========");
+          console.log("[task.ts] iterateContext:", JSON.stringify(iterateContext, null, 2));
+          console.log("[task.ts] userAnswer:", content);
           const result = await PromptEnhanceService.smartEnhance(uuid, task.id, {
             originalPrompt: iterateContext.originalPrompt,
             reviewerOutput: iterateContext.reviewerOutput,
             questionerOutput: iterateContext.questionerOutput,
             userAnswer: content,
           });
+          console.log("[task.ts] smartEnhance 结果:", result.success, result.error || "");
           if (result.success) {
             finalPrompt = result.enhancedPrompt;
+            console.log("[task.ts] 增强后的提示词长度:", finalPrompt.length);
           } else {
             console.warn("[task.ts] 智能迭代增强失败，使用原始提示词:", result.error);
             finalPrompt = iterateContext.originalPrompt;
