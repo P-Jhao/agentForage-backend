@@ -10,6 +10,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import routes from "./routes/index.js";
 import { sequelize, initSuperAdmin, initBuiltinMcps } from "./config/database.js";
 import { initMCPConnections } from "./mcp/index.js";
+import { startCleanupScheduler } from "./utils/fileCleanup.js";
 import "./dao/models/index.js"; // 确保模型被加载
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,6 +53,9 @@ const startServer = async () => {
 
     // 初始化 MCP 连接（连接所有 connected 状态的 MCP）
     await initMCPConnections();
+
+    // 启动聊天文件定时清理任务（每小时清理超过 1 小时的文件）
+    startCleanupScheduler();
 
     // 启动 HTTP 服务
     app.listen(PORT, () => {

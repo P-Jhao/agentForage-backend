@@ -13,6 +13,7 @@ import PromptEnhanceService from "../service/promptEnhanceService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
+import { deleteFiles } from "../utils/fileCleanup.js";
 
 const router = new Router();
 
@@ -681,6 +682,14 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 更新任务状态为 completed
       await TaskService.updateTaskStatus(uuid, "completed");
+
+      // 清理用户上传的临时文件（LLM 已解析完成，不再需要）
+      if (files && files.length > 0) {
+        const filePaths = files.map((f) => f.filePath);
+        deleteFiles(filePaths).catch((error) => {
+          console.error("[task.ts] 清理上传文件失败:", error);
+        });
+      }
 
       // LLM 回复完成后，异步检查并触发消息总结（不阻塞主流程）
       MessageSummaryService.checkAndTriggerSummary(task.id).catch((error) => {

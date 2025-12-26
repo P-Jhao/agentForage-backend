@@ -54,7 +54,7 @@ interface MCPToolSelectionResult {
 
 // MCP 分析结果
 export interface MCPAnalyzeResult {
-  type: "create_forge" | "not_supported";
+  type: "create_forge" | "not_supported" | "no_tool_needed";
   mcpTools?: MCPToolSelectionResult[];
   originalQuery: string;
 }
