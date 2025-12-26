@@ -87,13 +87,15 @@ class ForgeAgentService {
    * @param model 模型选择（可选）
    * @param enableThinking 是否启用深度思考（默认 true）
    * @param builtinContext 内置工具激活上下文（可选，如用户上传的文件列表）
+   * @param taskId 任务 ID（用于中断控制）
    */
   async *stream(
     forgeId: number | null | undefined,
     messages: AgentMessage[],
     model?: "qwen" | "deepseek",
     enableThinking: boolean = true,
-    builtinContext?: BuiltinContext
+    builtinContext?: BuiltinContext,
+    taskId?: string
   ): AsyncGenerator<AgentStreamChunk> {
     let systemPrompt: string | undefined;
     let tools: Array<{
@@ -152,6 +154,7 @@ class ForgeAgentService {
       toolExecutor: tools.length > 0 ? toolExecutor : undefined,
       enableThinking,
       builtinContext,
+      taskId,
     });
   }
 

@@ -6,6 +6,7 @@ import { promptEnhancerService } from "agentforge-gateway";
 import type { SmartIterateContext } from "agentforge-gateway";
 import MessageDAO from "../dao/messageDAO.js";
 import TaskStreamService from "./taskStreamService.js";
+import TaskAbortService from "./taskAbortService.js";
 
 // 增强模式类型
 export type EnhanceMode = "off" | "quick" | "smart" | "multi";
@@ -45,6 +46,12 @@ class PromptEnhanceService {
     try {
       // 流式输出增强过程
       for await (const chunk of promptEnhancerService.quickEnhance(userPrompt)) {
+        // 检查是否已被中断
+        if (TaskAbortService.isAborted(uuid)) {
+          console.log(`[PromptEnhanceService] 快速增强被中断: ${uuid}`);
+          return { success: false, enhancedPrompt: userPrompt, error: "任务已被中断" };
+        }
+
         if (chunk.type === "error") {
           // 增强失败，返回错误
           return {
@@ -97,6 +104,12 @@ class PromptEnhanceService {
     try {
       // 第一阶段：审查
       for await (const chunk of promptEnhancerService.smartReview(userPrompt)) {
+        // 检查是否已被中断
+        if (TaskAbortService.isAborted(uuid)) {
+          console.log(`[PromptEnhanceService] 智能迭代审查被中断: ${uuid}`);
+          return { success: false, reviewerOutput: "", questionerOutput: "" };
+        }
+
         if (chunk.type === "error") {
           return { success: false, reviewerOutput: "", questionerOutput: "" };
         }
@@ -112,6 +125,12 @@ class PromptEnhanceService {
 
       // 第二阶段：提问
       for await (const chunk of promptEnhancerService.smartQuestion(userPrompt, reviewerOutput)) {
+        // 检查是否已被中断
+        if (TaskAbortService.isAborted(uuid)) {
+          console.log(`[PromptEnhanceService] 智能迭代提问被中断: ${uuid}`);
+          return { success: false, reviewerOutput, questionerOutput: "" };
+        }
+
         if (chunk.type === "error") {
           return { success: false, reviewerOutput, questionerOutput: "" };
         }
@@ -149,6 +168,12 @@ class PromptEnhanceService {
 
     try {
       for await (const chunk of promptEnhancerService.smartEnhance(context)) {
+        // 检查是否已被中断
+        if (TaskAbortService.isAborted(uuid)) {
+          console.log(`[PromptEnhanceService] 智能迭代增强被中断: ${uuid}`);
+          return { success: false, enhancedPrompt: context.originalPrompt, error: "任务已被中断" };
+        }
+
         if (chunk.type === "error") {
           return {
             success: false,
@@ -198,6 +223,12 @@ class PromptEnhanceService {
     try {
       // 第一阶段：专家分析
       for await (const chunk of promptEnhancerService.multiExpertAnalyze(userPrompt)) {
+        // 检查是否已被中断
+        if (TaskAbortService.isAborted(uuid)) {
+          console.log(`[PromptEnhanceService] 多角度专家分析被中断: ${uuid}`);
+          return { success: false, enhancedPrompt: userPrompt, error: "任务已被中断" };
+        }
+
         if (chunk.type === "error") {
           return {
             success: false,
@@ -217,6 +248,12 @@ class PromptEnhanceService {
 
       // 第二阶段：评审官综合
       for await (const chunk of promptEnhancerService.multiEnhance(userPrompt, expertOutput)) {
+        // 检查是否已被中断
+        if (TaskAbortService.isAborted(uuid)) {
+          console.log(`[PromptEnhanceService] 多角度增强被中断: ${uuid}`);
+          return { success: false, enhancedPrompt: userPrompt, error: "任务已被中断" };
+        }
+
         if (chunk.type === "error") {
           return {
             success: false,

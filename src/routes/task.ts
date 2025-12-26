@@ -10,6 +10,7 @@ import TaskStreamService from "../service/taskStreamService.js";
 import ForgeAgentService from "../service/forgeAgentService.js";
 import MessageSummaryService from "../service/messageSummaryService.js";
 import PromptEnhanceService from "../service/promptEnhanceService.js";
+import TaskAbortService from "../service/taskAbortService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
@@ -213,6 +214,59 @@ router.delete("/:id", tokenAuth(), async (ctx) => {
   await TaskService.deleteTask(uuid);
 
   ctx.body = { code: 200, message: "ok" };
+});
+
+/**
+ * 中断任务
+ * POST /api/task/:id/abort
+ * 中断正在运行的 LLM 调用，节省 token
+ */
+router.post("/:id/abort", tokenAuth(), async (ctx) => {
+  const userId = ctx.state.user.id as number;
+  const { id: uuid } = ctx.params;
+
+  console.log(`[task.ts] ========== 收到中断请求 ==========`);
+  console.log(`[task.ts] 任务 UUID: ${uuid}`);
+
+  // 权限检查
+  const belongsToUser = await TaskService.belongsToUser(uuid, userId);
+  if (!belongsToUser) {
+    const task = await TaskService.getTask(uuid);
+    if (!task) {
+      ctx.status = 404;
+      ctx.body = { code: 404, message: "任务不存在" };
+    } else {
+      ctx.status = 403;
+      ctx.body = { code: 403, message: "无权访问该任务" };
+    }
+    return;
+  }
+
+  // 检查任务是否正在运行（流是否存在）
+  const isRunning = TaskStreamService.isRunning(uuid);
+  console.log(`[task.ts] 任务流运行状态: ${isRunning}`);
+
+  // 无论流是否在运行，都尝试中断 Gateway 层的 LLM 调用
+  // 因为 LLM 可能还在输出，只是流已经结束了
+  console.log(`[task.ts] 调用 TaskAbortService.abort() 中断 LLM...`);
+  const aborted = TaskAbortService.abort(uuid);
+  console.log(`[task.ts] TaskAbortService.abort() 返回: ${aborted}`);
+
+  if (isRunning) {
+    // 流还在运行，发送中断消息并结束流
+    console.log(`[task.ts] 流正在运行，发送中断消息并结束流`);
+    TaskStreamService.write(uuid, { type: "error", data: { message: "任务已被中断" } });
+    TaskStreamService.write(uuid, { type: "done" });
+    TaskStreamService.endStream(uuid);
+  } else {
+    console.log(`[task.ts] 流已结束，仅中断 Gateway 层 LLM`);
+  }
+
+  // 更新任务状态
+  await TaskService.updateTaskStatus(uuid, "completed");
+
+  console.log(`[task.ts] ========== 中断处理完成 ==========`);
+  ctx.body = { code: 200, message: "ok", data: { aborted: true } };
 });
 
 // 发送消息请求体
@@ -457,6 +511,17 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         }
       }
 
+      // 检查增强过程中是否被中断
+      if (TaskAbortService.isAborted(uuid)) {
+        console.log(`[task.ts] 任务在增强阶段被中断: ${uuid}`);
+        await TaskService.updateTaskStatus(uuid, "completed");
+        TaskAbortService.cleanup(uuid);
+        TaskStreamService.write(uuid, { type: "done" });
+        TaskStreamService.endStream(uuid);
+        ctx.respond = false;
+        return;
+      }
+
       // 如果跳过 LLM 调用（智能迭代等待用户回复），直接结束
       if (skipLLMCall) {
         await TaskService.updateTaskStatus(uuid, "completed");
@@ -496,6 +561,51 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       let currentThinkingContent = "";
       // 当前正在拼接的 summary 段落
       let currentSummaryContent = "";
+      // 标记是否被中断
+      let wasAborted = false;
+
+      // 辅助函数：保存已累积的内容到数据库
+      const saveAccumulatedContent = async (isAborted: boolean) => {
+        // 保存 thinking 段落
+        if (currentThinkingContent) {
+          const content = isAborted
+            ? currentThinkingContent + "\n\n[已中断]"
+            : currentThinkingContent;
+          await MessageDAO.createAssistantTextMessage({
+            conversationId: task.id,
+            role: "assistant",
+            type: "thinking",
+            content,
+          });
+          currentThinkingContent = "";
+        }
+
+        // 保存 chat 段落
+        if (currentTextContent) {
+          const content = isAborted ? currentTextContent + "\n\n[已中断]" : currentTextContent;
+          await MessageDAO.createAssistantTextMessage({
+            conversationId: task.id,
+            role: "assistant",
+            type: "chat",
+            content,
+          });
+          currentTextContent = "";
+        }
+
+        // 保存 summary 段落
+        if (currentSummaryContent) {
+          const content = isAborted
+            ? currentSummaryContent + "\n\n[已中断]"
+            : currentSummaryContent;
+          await MessageDAO.createAssistantTextMessage({
+            conversationId: task.id,
+            role: "assistant",
+            type: "summary",
+            content,
+          });
+          currentSummaryContent = "";
+        }
+      };
 
       // 构建内置工具激活上下文（从文件信息中提取路径和原始文件名）
       const fileInfos =
@@ -507,91 +617,32 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
-      for await (const chunk of ForgeAgentService.stream(
-        task.agentId,
-        chatMessages,
-        undefined,
-        enableThinking,
-        builtinContext
-      )) {
-        const chunkType = chunk.type;
+      try {
+        for await (const chunk of ForgeAgentService.stream(
+          task.agentId,
+          chatMessages,
+          undefined,
+          enableThinking,
+          builtinContext,
+          uuid // 传入任务 ID 用于中断控制
+        )) {
+          const chunkType = chunk.type;
 
-        // 处理工具调用开始（Gateway 发出 tool_call_start）
-        if (chunkType === "tool_call_start") {
-          const toolData = chunk.data as ToolCallStartData;
+          // 处理工具调用开始（Gateway 发出 tool_call_start）
+          if (chunkType === "tool_call_start") {
+            const toolData = chunk.data as ToolCallStartData;
 
-          // 如果有正在进行的文本段落，先保存到数据库
-          if (currentTextContent) {
-            await MessageDAO.createAssistantTextMessage({
-              conversationId: task.id,
-              role: "assistant",
-              type: "chat",
-              content: currentTextContent,
-            });
-            currentTextContent = "";
-          }
+            // 如果有正在进行的文本段落，先保存到数据库
+            if (currentTextContent) {
+              await MessageDAO.createAssistantTextMessage({
+                conversationId: task.id,
+                role: "assistant",
+                type: "chat",
+                content: currentTextContent,
+              });
+              currentTextContent = "";
+            }
 
-          // 如果有正在进行的 thinking 段落，先保存到数据库
-          if (currentThinkingContent) {
-            await MessageDAO.createAssistantTextMessage({
-              conversationId: task.id,
-              role: "assistant",
-              type: "thinking",
-              content: currentThinkingContent,
-            });
-            currentThinkingContent = "";
-          }
-
-          // 创建工具调用消息（初始状态）
-          await MessageDAO.createToolCallMessage({
-            conversationId: task.id,
-            callId: toolData.callId,
-            toolName: toolData.toolName,
-            arguments: toolData.args,
-          });
-
-          // 推送 tool_call_start 给前端
-          TaskStreamService.write(uuid, {
-            type: "tool_call_start",
-            data: {
-              callId: toolData.callId,
-              toolName: toolData.toolName,
-            },
-          });
-          continue;
-        }
-
-        // 处理工具调用结果（Gateway 发出 tool_call_result）
-        if (chunkType === "tool_call_result") {
-          const resultData = chunk.data as ToolCallResultData;
-
-          // 更新工具调用结果（包含参数）
-          await MessageDAO.updateToolCallResult(resultData.callId, {
-            success: resultData.success,
-            result: resultData.result,
-            error: resultData.error,
-            arguments: resultData.args, // 保存工具 LLM 决定的参数
-          });
-
-          // 推送 tool_call_result 给前端
-          TaskStreamService.write(uuid, {
-            type: "tool_call_result",
-            data: {
-              callId: resultData.callId,
-              toolName: resultData.toolName,
-              success: resultData.success,
-              result: resultData.result,
-              error: resultData.error,
-              args: resultData.args, // 包含工具 LLM 决定的参数
-            },
-          });
-          continue;
-        }
-
-        // 处理 chat 类型的文本内容
-        if (chunkType === "chat") {
-          const chunkData = chunk.data as string;
-          if (chunkData) {
             // 如果有正在进行的 thinking 段落，先保存到数据库
             if (currentThinkingContent) {
               await MessageDAO.createAssistantTextMessage({
@@ -602,55 +653,138 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
               });
               currentThinkingContent = "";
             }
-            currentTextContent += chunkData;
+
+            // 创建工具调用消息（初始状态）
+            await MessageDAO.createToolCallMessage({
+              conversationId: task.id,
+              callId: toolData.callId,
+              toolName: toolData.toolName,
+              arguments: toolData.args,
+            });
+
+            // 推送 tool_call_start 给前端
+            TaskStreamService.write(uuid, {
+              type: "tool_call_start",
+              data: {
+                callId: toolData.callId,
+                toolName: toolData.toolName,
+              },
+            });
+            continue;
           }
 
-          // 通过 TaskStreamService 写入
-          TaskStreamService.write(uuid, { type: "chat", data: chunkData });
-          continue;
-        }
+          // 处理工具调用结果（Gateway 发出 tool_call_result）
+          if (chunkType === "tool_call_result") {
+            const resultData = chunk.data as ToolCallResultData;
 
-        // 处理 thinking 类型的文本内容
-        if (chunkType === "thinking") {
-          const chunkData = chunk.data as string;
-          if (chunkData) {
-            // 累积 thinking 内容，不立即保存
-            currentThinkingContent += chunkData;
+            // 更新工具调用结果（包含参数）
+            await MessageDAO.updateToolCallResult(resultData.callId, {
+              success: resultData.success,
+              result: resultData.result,
+              error: resultData.error,
+              arguments: resultData.args, // 保存工具 LLM 决定的参数
+            });
+
+            // 推送 tool_call_result 给前端
+            TaskStreamService.write(uuid, {
+              type: "tool_call_result",
+              data: {
+                callId: resultData.callId,
+                toolName: resultData.toolName,
+                success: resultData.success,
+                result: resultData.result,
+                error: resultData.error,
+                args: resultData.args, // 包含工具 LLM 决定的参数
+              },
+            });
+            continue;
           }
 
-          // 通过 TaskStreamService 写入
-          TaskStreamService.write(uuid, { type: "thinking", data: chunkData });
-          continue;
-        }
-
-        // 处理 summary 类型的文本内容
-        if (chunk.type === "summary") {
-          const chunkData = chunk.data as string;
-          if (chunkData) {
-            // 如果有正在进行的 chat 段落，先保存到数据库
-            if (currentTextContent) {
-              await MessageDAO.createAssistantTextMessage({
-                conversationId: task.id,
-                role: "assistant",
-                type: "chat",
-                content: currentTextContent,
-              });
-              currentTextContent = "";
+          // 处理 chat 类型的文本内容
+          if (chunkType === "chat") {
+            const chunkData = chunk.data as string;
+            if (chunkData) {
+              // 如果有正在进行的 thinking 段落，先保存到数据库
+              if (currentThinkingContent) {
+                await MessageDAO.createAssistantTextMessage({
+                  conversationId: task.id,
+                  role: "assistant",
+                  type: "thinking",
+                  content: currentThinkingContent,
+                });
+                currentThinkingContent = "";
+              }
+              currentTextContent += chunkData;
             }
-            // 累积 summary 内容
-            currentSummaryContent += chunkData;
-          }
-          // 通过 TaskStreamService 写入
-          TaskStreamService.write(uuid, { type: "summary", data: chunkData });
-          continue;
-        }
 
-        // 处理其他类型（error 等）
-        const chunkData = chunk.data as string;
-        TaskStreamService.write(uuid, { type: chunk.type, data: chunkData });
+            // 通过 TaskStreamService 写入
+            TaskStreamService.write(uuid, { type: "chat", data: chunkData });
+            continue;
+          }
+
+          // 处理 thinking 类型的文本内容
+          if (chunkType === "thinking") {
+            const chunkData = chunk.data as string;
+            if (chunkData) {
+              // 累积 thinking 内容，不立即保存
+              currentThinkingContent += chunkData;
+            }
+
+            // 通过 TaskStreamService 写入
+            TaskStreamService.write(uuid, { type: "thinking", data: chunkData });
+            continue;
+          }
+
+          // 处理 summary 类型的文本内容
+          if (chunk.type === "summary") {
+            const chunkData = chunk.data as string;
+            if (chunkData) {
+              // 如果有正在进行的 chat 段落，先保存到数据库
+              if (currentTextContent) {
+                await MessageDAO.createAssistantTextMessage({
+                  conversationId: task.id,
+                  role: "assistant",
+                  type: "chat",
+                  content: currentTextContent,
+                });
+                currentTextContent = "";
+              }
+              // 累积 summary 内容
+              currentSummaryContent += chunkData;
+            }
+            // 通过 TaskStreamService 写入
+            TaskStreamService.write(uuid, { type: "summary", data: chunkData });
+            continue;
+          }
+
+          // 处理其他类型（error 等）
+          const chunkData = chunk.data as string;
+          TaskStreamService.write(uuid, { type: chunk.type, data: chunkData });
+        }
+      } catch (streamError) {
+        // 检查是否是中断导致的错误
+        const errorMessage = (streamError as Error).message || "";
+        if (
+          errorMessage.includes("aborted") ||
+          errorMessage.includes("中断") ||
+          TaskAbortService.isAborted(uuid)
+        ) {
+          console.log(`[task.ts] LLM 流被中断: ${uuid}`);
+          wasAborted = true;
+          // 保存已累积的内容（标记为已中断）
+          await saveAccumulatedContent(true);
+        } else {
+          // 其他错误，重新抛出
+          throw streamError;
+        }
       }
 
-      // 保存最后一个 thinking 段落
+      // 如果没有被中断，正常保存内容
+      if (!wasAborted) {
+        await saveAccumulatedContent(false);
+      }
+
+      // 保存最后一个 thinking 段落（兼容旧逻辑，如果 saveAccumulatedContent 没有清空的话）
       if (currentThinkingContent) {
         await MessageDAO.createAssistantTextMessage({
           conversationId: task.id,
@@ -682,6 +816,9 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 更新任务状态为 completed
       await TaskService.updateTaskStatus(uuid, "completed");
+
+      // 清理中断状态
+      TaskAbortService.cleanup(uuid);
 
       // 清理用户上传的临时文件（LLM 已解析完成，不再需要）
       if (files && files.length > 0) {
