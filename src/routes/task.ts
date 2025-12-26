@@ -13,6 +13,7 @@ import PromptEnhanceService from "../service/promptEnhanceService.js";
 import TaskAbortService from "../service/taskAbortService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import TaskDAO from "../dao/taskDAO.js";
+import UserDAO from "../dao/userDAO.js";
 import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
 import { deleteFiles } from "../utils/fileCleanup.js";
@@ -646,6 +647,23 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         })) || [];
       const builtinContext = fileInfos.length > 0 ? { files: fileInfos } : undefined;
 
+      // 从数据库读取用户的自定义模型配置
+      const userModelConfig = await UserDAO.getModelConfig(userId);
+      // 转换为 Gateway 需要的格式（仅当 mode 为 custom 时传递）
+      const customModelConfig =
+        userModelConfig?.mode === "custom" &&
+        userModelConfig.baseUrl &&
+        userModelConfig.apiKey &&
+        userModelConfig.model
+          ? {
+              baseUrl: userModelConfig.baseUrl,
+              apiKey: userModelConfig.apiKey,
+              model: userModelConfig.model,
+              maxTokens: userModelConfig.maxTokens,
+              temperature: userModelConfig.temperature,
+            }
+          : undefined;
+
       // 调用 ForgeAgentService 流式获取 Agent 回复
       // task.agentId 为空时，Agent 无工具；有值时，获取 Forge 关联的工具
       try {
@@ -655,7 +673,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           undefined,
           enableThinking,
           builtinContext,
-          uuid // 传入任务 ID 用于中断控制
+          uuid, // 传入任务 ID 用于中断控制
+          customModelConfig // 自定义模型配置
         )) {
           const chunkType = chunk.type;
 

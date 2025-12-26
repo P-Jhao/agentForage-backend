@@ -6,6 +6,7 @@ import McpForgeDAO from "../dao/mcpForgeDAO.js";
 import ForgeDAO from "../dao/forgeDAO.js";
 import { mcpManager } from "../mcp/index.js";
 import type { MCPToolCallResult } from "../mcp/types.js";
+import type { CustomModelConfig } from "agentforge-gateway";
 
 // 动态导入 gateway
 const loadGateway = async () => {
@@ -45,6 +46,9 @@ export interface BuiltinContext {
   // 其他上下文信息（可扩展）
   [key: string]: unknown;
 }
+
+// 重新导出 CustomModelConfig 供外部使用
+export type { CustomModelConfig };
 
 /**
  * 将 MCP 工具调用结果转换为字符串
@@ -88,6 +92,7 @@ class ForgeAgentService {
    * @param enableThinking 是否启用深度思考（默认 true）
    * @param builtinContext 内置工具激活上下文（可选，如用户上传的文件列表）
    * @param taskId 任务 ID（用于中断控制）
+   * @param customModelConfig 自定义模型配置（可选，用户在设置中配置）
    */
   async *stream(
     forgeId: number | null | undefined,
@@ -95,7 +100,8 @@ class ForgeAgentService {
     model?: "qwen" | "deepseek",
     enableThinking: boolean = true,
     builtinContext?: BuiltinContext,
-    taskId?: string
+    taskId?: string,
+    customModelConfig?: CustomModelConfig
   ): AsyncGenerator<AgentStreamChunk> {
     let systemPrompt: string | undefined;
     let tools: Array<{
@@ -155,6 +161,7 @@ class ForgeAgentService {
       enableThinking,
       builtinContext,
       taskId,
+      customModelConfig, // 自定义模型配置
     });
   }
 

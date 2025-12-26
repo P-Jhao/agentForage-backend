@@ -4,15 +4,26 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../../config/database.js";
 
+// 自定义模型配置类型
+interface CustomModelConfig {
+  mode: "builtin" | "custom"; // 模式：系统内置 / 自定义
+  baseUrl?: string; // API 地址
+  apiKey?: string; // API 密钥
+  model?: string; // 模型名称
+  maxTokens?: number; // 最大 token 数
+  temperature?: number; // 温度参数
+}
+
 interface UserAttributes {
   id: number;
   username: string;
   password: string;
   apiQuota: number;
   role: "user" | "root"; // 用户角色：普通用户 / 超级管理员
+  modelConfig: CustomModelConfig | null; // 自定义模型配置
 }
 
-type UserCreationAttributes = Optional<UserAttributes, "id" | "apiQuota" | "role">;
+type UserCreationAttributes = Optional<UserAttributes, "id" | "apiQuota" | "role" | "modelConfig">;
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   declare id: number;
@@ -20,6 +31,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   declare password: string;
   declare apiQuota: number;
   declare role: "user" | "root";
+  declare modelConfig: CustomModelConfig | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -52,6 +64,12 @@ User.init(
       defaultValue: "user",
       comment: "用户角色：user 普通用户 / root 超级管理员",
     },
+    modelConfig: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: null,
+      comment: "自定义模型配置（JSON）",
+    },
   },
   {
     sequelize,
@@ -61,3 +79,4 @@ User.init(
 );
 
 export default User;
+export type { CustomModelConfig };
