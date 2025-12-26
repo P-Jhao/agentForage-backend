@@ -6,7 +6,7 @@ import { DataTypes, Model, Optional } from "sequelize";
 import { sequelize } from "../../config/database.js";
 
 // 任务状态枚举
-export type TaskStatus = "running" | "completed" | "cancelled";
+export type TaskStatus = "running" | "completed" | "cancelled" | "waiting";
 
 interface ConversationAttributes {
   id: number;
@@ -77,9 +77,9 @@ Conversation.init(
       comment: "是否收藏",
     },
     status: {
-      type: DataTypes.ENUM("running", "completed", "cancelled"),
+      type: DataTypes.ENUM("running", "completed", "cancelled", "waiting"),
       defaultValue: "running",
-      comment: "任务状态：running-运行中, completed-已完成, cancelled-已取消",
+      comment: "任务状态：running-运行中, completed-已完成, cancelled-已取消, waiting-等待用户回复",
     },
     summary: {
       type: DataTypes.TEXT,

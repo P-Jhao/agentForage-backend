@@ -12,6 +12,7 @@ import MessageSummaryService from "../service/messageSummaryService.js";
 import PromptEnhanceService from "../service/promptEnhanceService.js";
 import TaskAbortService from "../service/taskAbortService.js";
 import MessageDAO from "../dao/messageDAO.js";
+import TaskDAO from "../dao/taskDAO.js";
 import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
 import { deleteFiles } from "../utils/fileCleanup.js";
@@ -425,8 +426,11 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       }
 
       // 如果数据库状态是 running 但流已结束，说明之前异常退出，修复状态
-      if (task.status === "running") {
-        await TaskService.updateTaskStatus(uuid, "completed");
+      // 注意：只有当任务确实在运行中（有活跃的流）时才需要修复
+      // 新任务或已完成的任务不需要修复
+      if (task.status === "running" && !TaskStreamService.isRunning(uuid)) {
+        // 静默修复状态，不推送事件（避免触发通知）
+        await TaskDAO.updateStatus(uuid, "completed");
       }
 
       // 根据增强模式决定用户消息类型
@@ -549,9 +553,9 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         return;
       }
 
-      // 如果跳过 LLM 调用（智能迭代等待用户回复），直接结束
+      // 如果跳过 LLM 调用（智能迭代等待用户回复），设置为 waiting 状态
       if (skipLLMCall) {
-        await TaskService.updateTaskStatus(uuid, "completed");
+        await TaskService.updateTaskStatus(uuid, "waiting");
         TaskStreamService.write(uuid, { type: "done" });
         TaskStreamService.endStream(uuid);
         ctx.respond = false;
