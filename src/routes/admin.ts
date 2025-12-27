@@ -111,7 +111,9 @@ router.get("/task/list", async (ctx) => {
     for (const [convId, content] of latestTurnEnd) {
       try {
         const data = JSON.parse(content);
-        tokenMap.set(convId, data.accumulatedTokens || 0);
+        // accumulatedTokens 是一个对象 { promptTokens, completionTokens, totalTokens }
+        const tokens = data.accumulatedTokens;
+        tokenMap.set(convId, tokens?.totalTokens || 0);
       } catch {
         tokenMap.set(convId, 0);
       }
