@@ -32,7 +32,7 @@ interface AdminTaskListQuery {
 router.get("/task/list", async (ctx) => {
   const {
     page = "1",
-    pageSize = "20",
+    pageSize = "10",
     keyword,
     startTime,
     endTime,

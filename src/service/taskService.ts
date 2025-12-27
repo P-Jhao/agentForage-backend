@@ -18,6 +18,8 @@ interface CreateTaskParams {
 interface GetTasksOptions {
   keyword?: string;
   favorite?: boolean;
+  page?: number;
+  pageSize?: number;
 }
 
 // 更新任务参数

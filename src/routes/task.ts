@@ -75,14 +75,19 @@ router.post("/", tokenAuth(), async (ctx) => {
  */
 router.get("/list", tokenAuth(), async (ctx) => {
   const userId = ctx.state.user.id as number;
-  const { keyword, favorite } = ctx.query;
+  const { keyword, favorite, page = "1", pageSize = "10" } = ctx.query;
 
-  const tasks = await TaskService.getTasks(userId, {
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize as string, 10) || 20));
+
+  const result = await TaskService.getTasks(userId, {
     keyword: keyword as string | undefined,
     favorite: favorite === "true" ? true : favorite === "false" ? false : undefined,
+    page: pageNum,
+    pageSize: pageSizeNum,
   });
 
-  ctx.body = { code: 200, message: "ok", data: tasks };
+  ctx.body = { code: 200, message: "ok", data: result };
 });
 
 /**
