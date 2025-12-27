@@ -145,6 +145,7 @@ router.get("/subscribe", tokenAuth(), async (ctx) => {
  */
 router.get("/:id", tokenAuth(), async (ctx) => {
   const userId = ctx.state.user.id as number;
+  const userRole = ctx.state.user.role as string;
   const { id: uuid } = ctx.params;
 
   const task = await TaskService.getTask(uuid);
@@ -155,8 +156,8 @@ router.get("/:id", tokenAuth(), async (ctx) => {
     return;
   }
 
-  // 权限检查
-  if (task.userId !== userId) {
+  // 权限检查：任务所有者或 operator 可访问
+  if (task.userId !== userId && userRole !== "operator") {
     ctx.status = 403;
     ctx.body = { code: 403, message: "无权访问该任务" };
     return;

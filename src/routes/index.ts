@@ -13,6 +13,7 @@ import uploadRoutes from "./upload.js";
 import featuredRoutes from "./featured.js";
 import intentRoutes from "./intent.js";
 import cryptoRoutes from "./crypto.js";
+import adminRoutes from "./admin.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -33,5 +34,6 @@ router.use("/upload", uploadRoutes.routes());
 router.use("/featured", featuredRoutes.routes());
 router.use("/intent", intentRoutes.routes());
 router.use("/crypto", cryptoRoutes.routes());
+router.use("/admin", adminRoutes.routes());
 
 export default router;

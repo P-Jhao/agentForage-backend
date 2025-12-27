@@ -71,6 +71,35 @@ export const initSuperAdmin = async (): Promise<number | null> => {
 };
 
 /**
+ * 初始化平台运营员账号
+ * 在数据库同步后调用，如果不存在则创建
+ */
+export const initOperator = async (): Promise<void> => {
+  try {
+    // 动态导入 User 模型，避免循环依赖
+    const { User } = await import("../dao/models/index.js");
+
+    // 检查是否已存在 operator 账号
+    const existing = await User.findOne({ where: { username: "operator" } });
+    if (existing) {
+      console.log("ℹ️  operator 账号已存在");
+      return;
+    }
+
+    // 创建 operator 账号
+    const hashedPassword = await bcrypt.hash("operator", 10);
+    await User.create({
+      username: "operator",
+      password: hashedPassword,
+      role: "operator",
+    });
+    console.log("✅ operator 账号创建成功");
+  } catch (error) {
+    console.error("❌ 初始化 operator 失败:", (error as Error).message);
+  }
+};
+
+/**
  * 初始化内置 MCP
  * 在数据库同步后调用，需要管理员用户 ID
  * @param adminUserId 管理员用户 ID

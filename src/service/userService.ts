@@ -22,7 +22,7 @@ interface LoginResult {
     id: number;
     username: string;
     nickname: string;
-    role: "user" | "root";
+    role: "user" | "root" | "operator";
   };
 }
 

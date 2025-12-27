@@ -22,7 +22,7 @@ interface UserAttributes {
   avatar: string | null; // 头像 URL
   email: string | null; // 邮箱
   apiQuota: number;
-  role: "user" | "root"; // 用户角色：普通用户 / 超级管理员
+  role: "user" | "root" | "operator"; // 用户角色：普通用户 / 超级管理员 / 平台运营员
   modelConfig: CustomModelConfig | null; // 自定义模型配置
 }
 
@@ -39,7 +39,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   declare avatar: string | null;
   declare email: string | null;
   declare apiQuota: number;
-  declare role: "user" | "root";
+  declare role: "user" | "root" | "operator";
   declare modelConfig: CustomModelConfig | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -87,9 +87,9 @@ User.init(
       comment: "API 调用配额",
     },
     role: {
-      type: DataTypes.ENUM("user", "root"),
+      type: DataTypes.ENUM("user", "root", "operator"),
       defaultValue: "user",
-      comment: "用户角色：user 普通用户 / root 超级管理员",
+      comment: "用户角色：user 普通用户 / root 超级管理员 / operator 平台运营员",
     },
     modelConfig: {
       type: DataTypes.JSON,

@@ -8,7 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { errorHandler } from "./middleware/errorHandler.js";
 import routes from "./routes/index.js";
-import { sequelize, initSuperAdmin, initBuiltinMcps } from "./config/database.js";
+import { sequelize, initSuperAdmin, initOperator, initBuiltinMcps } from "./config/database.js";
 import { initMCPConnections } from "./mcp/index.js";
 import { startCleanupScheduler } from "./utils/fileCleanup.js";
 import "./dao/models/index.js"; // 确保模型被加载
@@ -45,6 +45,9 @@ const startServer = async () => {
 
     // 初始化超级管理员账号
     const adminUserId = await initSuperAdmin();
+
+    // 初始化平台运营员账号
+    await initOperator();
 
     // 初始化内置 MCP（需要管理员用户 ID）
     if (adminUserId) {
