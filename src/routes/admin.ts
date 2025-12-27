@@ -82,6 +82,7 @@ router.get("/task/list", async (ctx) => {
     order: [["updatedAt", "DESC"]],
     limit: pageSizeNum,
     offset,
+    subQuery: false, // 关联表字段搜索需要禁用子查询
   });
 
   // 获取每个任务的累积 token 消耗
