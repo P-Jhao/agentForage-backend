@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 export interface JwtPayload {
   id: number;
   username: string;
-  role: "user" | "root"; // 用户角色
+  role: "user" | "root" | "operator"; // 用户角色
 }
 
 export const tokenAuth = () => {
@@ -26,7 +26,8 @@ export const tokenAuth = () => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
       ctx.state.user = decoded;
       await next();
-    } catch {
+    } catch (error) {
+      console.error("[tokenAuth] JWT 验证失败:", (error as Error).message);
       ctx.status = 401;
       ctx.body = { code: 401, message: "令牌无效或已过期", data: null };
     }

@@ -76,6 +76,7 @@ class TaskDAO {
    * 按用户 ID 查询任务列表（包含关联的 Forge 信息）
    * 支持关键词搜索、收藏筛选和分页
    * 按 updatedAt 降序排序
+   * 注意：排除已删除的任务
    */
   static async findByUserId(
     userId: number,
@@ -83,8 +84,11 @@ class TaskDAO {
   ): Promise<FindTasksResult> {
     const { keyword, favorite, page = 1, pageSize = 10 } = options;
 
-    // 构建查询条件
-    const where: Record<string, unknown> = { userId };
+    // 构建查询条件（排除已删除的任务）
+    const where: Record<string, unknown> = {
+      userId,
+      status: { [Op.ne]: "deleted" },
+    };
 
     // 关键词搜索（标题模糊匹配）
     if (keyword) {
@@ -145,20 +149,16 @@ class TaskDAO {
   }
 
   /**
-   * 删除任务（级联删除关联消息）
+   * 软删除任务（将状态设为 deleted）
    */
   static async delete(uuid: string) {
-    // 先查询任务获取 id
     const task = await this.findByUuid(uuid);
     if (!task) {
       return false;
     }
 
-    // 删除关联的消息
-    await Message.destroy({ where: { conversationId: task.id } });
-
-    // 删除任务
-    await Conversation.destroy({ where: { uuid } });
+    // 软删除：更新状态为 deleted
+    await Conversation.update({ status: "deleted" }, { where: { uuid } });
 
     return true;
   }
