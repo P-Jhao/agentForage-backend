@@ -316,7 +316,6 @@ interface SSEChunk {
 interface ToolCallStartData {
   callId: string;
   toolName: string;
-  args: Record<string, unknown>;
 }
 
 // 工具调用结果数据（从 Gateway 接收）
@@ -324,9 +323,8 @@ interface ToolCallResultData {
   callId: string;
   toolName: string;
   success: boolean;
-  result?: string;
+  summarizedResult?: string; // Markdown 格式摘要
   error?: string;
-  args?: Record<string, unknown>; // 工具 LLM 决定的参数
 }
 
 /**
@@ -708,15 +706,14 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
               TaskStreamService.clearBuffer(uuid);
             }
 
-            // 创建工具调用消息（初始状态）
+            // 创建工具调用消息（初始状态，不包含参数）
             await MessageDAO.createToolCallMessage({
               conversationId: task.id,
               callId: toolData.callId,
               toolName: toolData.toolName,
-              arguments: toolData.args,
             });
 
-            // 推送 tool_call_start 给前端
+            // 推送 tool_call_start 给前端（不包含参数）
             TaskStreamService.write(uuid, {
               type: "tool_call_start",
               data: {
@@ -731,24 +728,22 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           if (chunkType === "tool_call_result") {
             const resultData = chunk.data as ToolCallResultData;
 
-            // 更新工具调用结果（包含参数）
+            // 更新工具调用结果（使用摘要结果）
             await MessageDAO.updateToolCallResult(resultData.callId, {
               success: resultData.success,
-              result: resultData.result,
+              summarizedResult: resultData.summarizedResult,
               error: resultData.error,
-              arguments: resultData.args, // 保存工具 LLM 决定的参数
             });
 
-            // 推送 tool_call_result 给前端
+            // 推送 tool_call_result 给前端（使用摘要结果，不包含参数）
             TaskStreamService.write(uuid, {
               type: "tool_call_result",
               data: {
                 callId: resultData.callId,
                 toolName: resultData.toolName,
                 success: resultData.success,
-                result: resultData.result,
+                summarizedResult: resultData.summarizedResult,
                 error: resultData.error,
-                args: resultData.args, // 包含工具 LLM 决定的参数
               },
             });
             continue;

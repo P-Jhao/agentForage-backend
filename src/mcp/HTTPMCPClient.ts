@@ -81,7 +81,7 @@ export class HTTPMCPClient extends MCPClientBase {
     this.heartbeatTimer = setInterval(async () => {
       try {
         await this.client?.ping();
-      } catch (error) {
+      } catch {
         console.log(`💔 MCP ${this._config.id} (${this._config.name}) 心跳检测失败`);
         this.stopHeartbeat();
         this.handleDisconnect();

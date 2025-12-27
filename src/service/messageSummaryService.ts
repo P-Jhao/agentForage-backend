@@ -224,9 +224,8 @@ class MessageSummaryService {
         // 收集所有类型的内容，包括工具调用
         if (msg.type === "tool_call") {
           const toolName = msg.toolName || "unknown";
-          const toolArgs = msg.arguments ? JSON.stringify(msg.arguments) : "{}";
-          const toolResult = msg.result ? JSON.stringify(msg.result) : "无结果";
-          const toolInfo = `[调用工具 ${toolName}，参数: ${toolArgs}，结果: ${toolResult}]`;
+          const toolResult = msg.summarizedResult || "无结果";
+          const toolInfo = `[调用工具 ${toolName}，结果: ${toolResult}]`;
           currentAssistantContent += (currentAssistantContent ? "\n" : "") + toolInfo;
         } else if (msg.content) {
           currentAssistantContent += (currentAssistantContent ? "\n" : "") + msg.content;

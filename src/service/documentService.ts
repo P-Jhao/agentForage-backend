@@ -20,8 +20,8 @@ class DocumentService {
   /**
    * 上传文档
    */
-  static async uploadDocument({ userId, filename, content: _content }: UploadParams) {
-    // TODO: 文档解析、分块、向量化（content 将在后续实现中使用）
+  static async uploadDocument({ userId, filename }: UploadParams) {
+    // TODO: 文档解析、分块、向量化
     const document = await DocumentDAO.create({ userId, filename });
     return document;
   }
@@ -36,8 +36,8 @@ class DocumentService {
   /**
    * RAG 语义检索
    */
-  static async search(_params: SearchParams) {
-    // TODO: 向量检索实现（参数将在后续实现中使用）
+  static async search(_: SearchParams) {
+    // TODO: 向量检索实现
     return [];
   }
 

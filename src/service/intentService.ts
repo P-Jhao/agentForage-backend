@@ -136,7 +136,7 @@ class IntentService {
    * 根据用户输入和可用 MCP 工具，判断是否可以创建新 Forge
    */
   static async analyzeMCPIntent(params: AnalyzeMCPParams): Promise<MCPAnalyzeResult> {
-    const { userInput, userId, sessionId } = params;
+    const { userInput, sessionId } = params;
 
     const gateway = await loadGateway();
 

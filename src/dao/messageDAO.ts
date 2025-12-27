@@ -26,20 +26,18 @@ interface CreateTextMessageData {
   aborted?: boolean; // 是否因中断而不完整
 }
 
-// 创建工具调用消息参数
+// 创建工具调用消息参数（不包含参数）
 interface CreateToolCallMessageData {
   conversationId: number;
   callId: string;
   toolName: string;
-  arguments: Record<string, unknown>;
 }
 
-// 更新工具调用结果参数
+// 更新工具调用结果参数（使用摘要结果）
 interface UpdateToolCallResultData {
   success: boolean;
-  result?: unknown;
+  summarizedResult?: string; // Markdown 格式摘要
   error?: string;
-  arguments?: Record<string, unknown>; // 工具 LLM 决定的参数
 }
 
 // 用户上传的文件信息
@@ -59,8 +57,7 @@ export interface FlatMessage {
   // 工具调用专用字段
   callId?: string;
   toolName?: string;
-  arguments?: Record<string, unknown>;
-  result?: unknown;
+  summarizedResult?: string; // Markdown 格式摘要
   success?: boolean;
   // 用户上传的文件
   files?: UploadedFileInfo[];
@@ -144,7 +141,6 @@ class MessageDAO {
       content: "",
       callId: data.callId,
       toolName: data.toolName,
-      arguments: JSON.stringify(data.arguments),
       success: false,
     });
   }
@@ -155,13 +151,8 @@ class MessageDAO {
   static async updateToolCallResult(callId: string, data: UpdateToolCallResultData) {
     const updateData: Record<string, unknown> = {
       success: data.success,
-      result: data.result !== undefined ? JSON.stringify(data.result) : null,
+      result: data.summarizedResult || null,
     };
-
-    // 如果有参数，也更新参数
-    if (data.arguments) {
-      updateData.arguments = JSON.stringify(data.arguments);
-    }
 
     return await Message.update(updateData, { where: { callId } });
   }
@@ -194,8 +185,7 @@ class MessageDAO {
       if (msg.type === "tool_call") {
         base.callId = msg.callId || undefined;
         base.toolName = msg.toolName || undefined;
-        base.arguments = msg.arguments ? JSON.parse(msg.arguments) : undefined;
-        base.result = msg.result ? JSON.parse(msg.result) : undefined;
+        base.summarizedResult = msg.result || undefined;
         base.success = msg.success ?? undefined;
       }
 
@@ -252,8 +242,7 @@ class MessageDAO {
       if (msg.type === "tool_call") {
         base.callId = msg.callId || undefined;
         base.toolName = msg.toolName || undefined;
-        base.arguments = msg.arguments ? JSON.parse(msg.arguments) : undefined;
-        base.result = msg.result ? JSON.parse(msg.result) : undefined;
+        base.summarizedResult = msg.result || undefined;
         base.success = msg.success ?? undefined;
       }
 
