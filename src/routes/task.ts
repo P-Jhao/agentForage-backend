@@ -561,6 +561,14 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         console.log(`[task.ts] 任务在增强阶段被中断: ${uuid}`);
         await TaskService.updateTaskStatus(uuid, "completed");
         TaskAbortService.cleanup(uuid);
+
+        // 增强阶段中断也写入 turn_end（token 可能为 0 或部分累积值）
+        const turnEndData: TurnEndData = {
+          completedAt: new Date().toISOString(),
+          accumulatedTokens: TokenAccumulatorService.get(uuid),
+        };
+        await MessageDAO.createTurnEndMessage(task.id, turnEndData);
+
         TaskStreamService.write(uuid, { type: "done" });
         TaskStreamService.endStream(uuid);
         ctx.respond = false;
@@ -913,19 +921,17 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         console.error("[task.ts] 触发消息总结失败:", error);
       });
 
-      // 发送 turn_end 消息（仅在正常完成时，中断时不发送）
-      if (!wasAborted) {
-        const turnEndData: TurnEndData = {
-          completedAt: new Date().toISOString(),
-          accumulatedTokens: TokenAccumulatorService.get(uuid),
-        };
+      // 发送 turn_end 消息（正常完成和中断都发送，中断时 token 可能是部分累积值）
+      const turnEndData: TurnEndData = {
+        completedAt: new Date().toISOString(),
+        accumulatedTokens: TokenAccumulatorService.get(uuid),
+      };
 
-        // 持久化 turn_end 消息到数据库
-        await MessageDAO.createTurnEndMessage(task.id, turnEndData);
+      // 持久化 turn_end 消息到数据库
+      await MessageDAO.createTurnEndMessage(task.id, turnEndData);
 
-        // 推送 turn_end 给前端
-        TaskStreamService.write(uuid, { type: "turn_end", data: turnEndData });
-      }
+      // 推送 turn_end 给前端
+      TaskStreamService.write(uuid, { type: "turn_end", data: turnEndData });
 
       // 发送结束标记并结束流（会关闭所有订阅者连接）
       TaskStreamService.write(uuid, { type: "done" });
