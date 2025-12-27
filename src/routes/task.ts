@@ -362,10 +362,20 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
     ctx.body = { code: 404, message: "任务不存在" };
     return;
   }
+
+  // 获取用户角色
+  const userRole = ctx.state.user.role as string;
+
+  // 只有任务所有者可以发送消息
+  // operator 只能加载历史消息（loadHistory=true）
   if (task.userId !== userId) {
-    ctx.status = 403;
-    ctx.body = { code: 403, message: "无权访问该任务" };
-    return;
+    if (loadHistory && userRole === "operator") {
+      // operator 可以加载历史消息
+    } else {
+      ctx.status = 403;
+      ctx.body = { code: 403, message: "无权访问该任务" };
+      return;
+    }
   }
 
   // 获取原生响应对象，绕过 Koa 的响应缓冲
@@ -419,6 +429,14 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       write({ type: "done" });
     } else {
       // 发送新消息
+      // operator 不能发送消息
+      if (userRole === "operator") {
+        write({ type: "error", data: { message: "平台运营员只能查看任务，不能发送消息" } });
+        res.end();
+        ctx.respond = false;
+        return;
+      }
+
       if (!content || typeof content !== "string") {
         write({ type: "error", data: { message: "消息内容不能为空" } });
         res.end();
