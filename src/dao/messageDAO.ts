@@ -7,6 +7,7 @@
  */
 import { Message } from "./models/index.js";
 import type { MessageRole, MessageType } from "./models/Message.js";
+import type { TurnEndData } from "../types/turnEnd.js";
 
 // 增强过程消息类型
 export type EnhanceProcessType =
@@ -258,6 +259,46 @@ class MessageDAO {
 
       return base;
     });
+  }
+  /**
+   * 创建 turn_end 消息
+   * @param conversationId 会话 ID
+   * @param turnEndData 轮次结束数据
+   */
+  static async createTurnEndMessage(conversationId: number, turnEndData: TurnEndData) {
+    return await Message.create({
+      conversationId,
+      role: "assistant",
+      type: "turn_end",
+      content: JSON.stringify(turnEndData),
+    });
+  }
+
+  /**
+   * 获取会话中最后一条 turn_end 消息
+   * 用于恢复历史时获取累积 token 统计
+   * @param conversationId 会话 ID
+   * @returns 最后一条 turn_end 消息的数据，如果不存在返回 null
+   */
+  static async getLastTurnEndMessage(conversationId: number): Promise<TurnEndData | null> {
+    const message = await Message.findOne({
+      where: {
+        conversationId,
+        type: "turn_end",
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (!message) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(message.content) as TurnEndData;
+    } catch {
+      console.error(`[MessageDAO] 解析 turn_end 消息失败: ${message.content}`);
+      return null;
+    }
   }
 }
 

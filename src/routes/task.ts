@@ -11,12 +11,14 @@ import ForgeAgentService from "../service/forgeAgentService.js";
 import MessageSummaryService from "../service/messageSummaryService.js";
 import PromptEnhanceService from "../service/promptEnhanceService.js";
 import TaskAbortService from "../service/taskAbortService.js";
+import TokenAccumulatorService from "../service/tokenAccumulatorService.js";
 import MessageDAO from "../dao/messageDAO.js";
 import TaskDAO from "../dao/taskDAO.js";
 import UserDAO from "../dao/userDAO.js";
 import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
 import { deleteFiles } from "../utils/fileCleanup.js";
+import type { TurnEndData, TokenUsage } from "../types/turnEnd.js";
 
 const router = new Router();
 
@@ -308,7 +310,9 @@ interface SSEChunk {
     | "reviewer" // 审查者输出
     | "questioner" // 提问者输出
     | "expert" // 专家分析输出
-    | "enhancer"; // 增强后的提示词
+    | "enhancer" // 增强后的提示词
+    // 轮次结束统计
+    | "turn_end";
   data?: unknown;
 }
 
@@ -473,6 +477,17 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
 
       // 开始任务流（支持多订阅者）
       TaskStreamService.startStream(uuid);
+
+      // 初始化 token 累积器（如果已存在则保留，用于多轮对话累积）
+      if (!TokenAccumulatorService.has(uuid)) {
+        // 尝试从历史 turn_end 消息恢复累积值
+        const lastTurnEnd = await MessageDAO.getLastTurnEndMessage(task.id);
+        if (lastTurnEnd) {
+          TokenAccumulatorService.init(uuid, lastTurnEnd.accumulatedTokens);
+        } else {
+          TokenAccumulatorService.init(uuid);
+        }
+      }
 
       // 将当前连接添加为订阅者
       TaskStreamService.subscribe(uuid, res);
@@ -810,6 +825,15 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
             continue;
           }
 
+          // 处理 usage 类型（token 使用统计）
+          if (chunk.type === "usage") {
+            const usageData = chunk.data as TokenUsage;
+            if (usageData) {
+              TokenAccumulatorService.add(uuid, usageData);
+            }
+            continue;
+          }
+
           // 处理其他类型（error 等）
           const chunkData = chunk.data as string;
           TaskStreamService.write(uuid, { type: chunk.type, data: chunkData });
@@ -888,6 +912,20 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       MessageSummaryService.checkAndTriggerSummary(task.id).catch((error) => {
         console.error("[task.ts] 触发消息总结失败:", error);
       });
+
+      // 发送 turn_end 消息（仅在正常完成时，中断时不发送）
+      if (!wasAborted) {
+        const turnEndData: TurnEndData = {
+          completedAt: new Date().toISOString(),
+          accumulatedTokens: TokenAccumulatorService.get(uuid),
+        };
+
+        // 持久化 turn_end 消息到数据库
+        await MessageDAO.createTurnEndMessage(task.id, turnEndData);
+
+        // 推送 turn_end 给前端
+        TaskStreamService.write(uuid, { type: "turn_end", data: turnEndData });
+      }
 
       // 发送结束标记并结束流（会关闭所有订阅者连接）
       TaskStreamService.write(uuid, { type: "done" });

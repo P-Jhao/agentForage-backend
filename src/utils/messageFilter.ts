@@ -15,6 +15,7 @@ export const ENHANCE_PROCESS_TYPES: MessageType[] = [
   "questioner", // 提问者输出
   "expert", // 专家分析输出
   "user_answer", // 用户对澄清问题的回复
+  "turn_end", // 轮次结束统计（不发送给 LLM）
 ];
 
 /**

@@ -27,7 +27,9 @@ export type MessageType =
   | "reviewer" // 审查者输出
   | "questioner" // 提问者输出
   | "expert" // 专家分析输出
-  | "enhancer"; // 增强后的提示词
+  | "enhancer" // 增强后的提示词
+  // 轮次结束统计
+  | "turn_end"; // 对话轮次结束统计信息
 
 // 基础消息段落（用于前端展示）
 export interface BaseMessageSegment {
@@ -43,7 +45,9 @@ export interface BaseMessageSegment {
     | "reviewer"
     | "questioner"
     | "expert"
-    | "enhancer";
+    | "enhancer"
+    // 轮次结束统计
+    | "turn_end";
   content: string;
 }
 
@@ -154,7 +158,9 @@ Message.init(
         "reviewer",
         "questioner",
         "expert",
-        "enhancer"
+        "enhancer",
+        // 轮次结束统计
+        "turn_end"
       ),
       allowNull: false,
       defaultValue: "chat",

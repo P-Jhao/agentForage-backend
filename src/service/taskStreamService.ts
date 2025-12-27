@@ -21,7 +21,9 @@ interface SSEChunk {
     | "reviewer"
     | "questioner"
     | "expert"
-    | "enhancer";
+    | "enhancer"
+    // 轮次结束统计
+    | "turn_end";
   data?: unknown;
 }
 
