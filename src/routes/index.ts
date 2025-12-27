@@ -14,6 +14,7 @@ import featuredRoutes from "./featured.js";
 import intentRoutes from "./intent.js";
 import cryptoRoutes from "./crypto.js";
 import adminRoutes from "./admin.js";
+import shareRoutes from "./share.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -35,5 +36,6 @@ router.use("/featured", featuredRoutes.routes());
 router.use("/intent", intentRoutes.routes());
 router.use("/crypto", cryptoRoutes.routes());
 router.use("/admin", adminRoutes.routes());
+router.use("/share", shareRoutes.routes());
 
 export default router;
