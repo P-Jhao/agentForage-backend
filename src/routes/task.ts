@@ -952,10 +952,13 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       };
 
       // 持久化 turn_end 消息到数据库
-      await MessageDAO.createTurnEndMessage(task.id, turnEndData);
+      const turnEndMessage = await MessageDAO.createTurnEndMessage(task.id, turnEndData);
 
-      // 推送 turn_end 给前端
-      TaskStreamService.write(uuid, { type: "turn_end", data: turnEndData });
+      // 推送 turn_end 给前端（包含消息 ID，用于反馈功能）
+      TaskStreamService.write(uuid, {
+        type: "turn_end",
+        data: { ...turnEndData, messageId: turnEndMessage.id },
+      });
 
       // 发送结束标记并结束流（会关闭所有订阅者连接）
       TaskStreamService.write(uuid, { type: "done" });

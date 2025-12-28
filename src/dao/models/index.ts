@@ -11,6 +11,7 @@ import Mcp from "./Mcp.js";
 import McpForge from "./McpForge.js";
 import ForgeFavorite from "./ForgeFavorite.js";
 import FeaturedTask from "./FeaturedTask.js";
+import Feedback from "./Feedback.js";
 
 // 定义模型关联
 User.hasMany(Conversation, { foreignKey: "userId", as: "conversations" });
@@ -63,6 +64,16 @@ Agent.hasMany(McpForge, { foreignKey: "forgeId", as: "mcpForges" });
 FeaturedTask.belongsTo(Conversation, { foreignKey: "taskUuid", targetKey: "uuid", as: "task" });
 Conversation.hasOne(FeaturedTask, { foreignKey: "taskUuid", sourceKey: "uuid", as: "featured" });
 
+// Feedback 与 Conversation、User、Message 的关联
+Conversation.hasMany(Feedback, { foreignKey: "taskId", as: "feedbacks" });
+Feedback.belongsTo(Conversation, { foreignKey: "taskId", as: "task" });
+
+User.hasMany(Feedback, { foreignKey: "userId", as: "feedbacks" });
+Feedback.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+Message.hasMany(Feedback, { foreignKey: "turnEndMessageId", as: "feedbacks" });
+Feedback.belongsTo(Message, { foreignKey: "turnEndMessageId", as: "turnEndMessage" });
+
 export {
   sequelize,
   User,
@@ -74,4 +85,5 @@ export {
   McpForge,
   ForgeFavorite,
   FeaturedTask,
+  Feedback,
 };

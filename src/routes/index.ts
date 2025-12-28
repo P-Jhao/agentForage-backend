@@ -15,6 +15,7 @@ import intentRoutes from "./intent.js";
 import cryptoRoutes from "./crypto.js";
 import adminRoutes from "./admin.js";
 import shareRoutes from "./share.js";
+import feedbackRoutes from "./feedback.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -30,6 +31,7 @@ router.use("/chat", chatRoutes.routes());
 router.use("/document", documentRoutes.routes());
 router.use("/mcp", mcpRoutes.routes());
 router.use("/task", taskRoutes.routes());
+router.use("/feedback", feedbackRoutes.routes()); // 反馈路由挂载到 /api/feedback 下
 router.use("/forge", forgeRoutes.routes());
 router.use("/upload", uploadRoutes.routes());
 router.use("/featured", featuredRoutes.routes());

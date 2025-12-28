@@ -3,7 +3,7 @@
  * 处理任务（会话）的数据库操作
  */
 import { Op } from "sequelize";
-import { Conversation, Message, Agent } from "./models/index.js";
+import { Conversation, Agent } from "./models/index.js";
 import type { TaskStatus } from "./models/Conversation.js";
 
 // 创建任务参数

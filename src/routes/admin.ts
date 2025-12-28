@@ -7,6 +7,7 @@ import { Op } from "sequelize";
 import { tokenAuth, operatorAuth } from "../middleware/index.js";
 import { Conversation, User, Message } from "../dao/models/index.js";
 import TaskDAO from "../dao/taskDAO.js";
+import FeedbackDAO from "../dao/feedbackDAO.js";
 
 const router = new Router();
 
@@ -156,6 +157,86 @@ router.get("/task/list", async (ctx) => {
       tasks: taskList,
       pagination: {
         total: count,
+        page: pageNum,
+        pageSize: pageSizeNum,
+      },
+    },
+  };
+});
+
+// 反馈列表请求参数
+interface AdminFeedbackListQuery {
+  page?: string;
+  pageSize?: string;
+  taskKeyword?: string;
+  userKeyword?: string;
+  taskStartTime?: string;
+  taskEndTime?: string;
+  feedbackType?: "all" | "like" | "dislike" | "cancel";
+  feedbackStartTime?: string;
+  feedbackEndTime?: string;
+}
+
+/**
+ * 获取反馈列表
+ * GET /api/admin/feedback/list
+ */
+router.get("/feedback/list", async (ctx) => {
+  const {
+    page = "1",
+    pageSize = "10",
+    taskKeyword,
+    userKeyword,
+    taskStartTime,
+    taskEndTime,
+    feedbackType,
+    feedbackStartTime,
+    feedbackEndTime,
+  } = ctx.query as AdminFeedbackListQuery;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+
+  // 调用 DAO 查询
+  const { feedbacks, total } = await FeedbackDAO.findAllWithFilters({
+    page: pageNum,
+    pageSize: pageSizeNum,
+    taskKeyword,
+    userKeyword,
+    taskStartTime: taskStartTime ? new Date(taskStartTime) : undefined,
+    taskEndTime: taskEndTime ? new Date(taskEndTime) : undefined,
+    feedbackType,
+    feedbackStartTime: feedbackStartTime ? new Date(feedbackStartTime) : undefined,
+    feedbackEndTime: feedbackEndTime ? new Date(feedbackEndTime) : undefined,
+  });
+
+  // 格式化响应数据
+  const feedbackList = feedbacks.map((feedback) => ({
+    id: feedback.id,
+    task: {
+      uuid: feedback.task.uuid,
+      title: feedback.task.title,
+      createdAt: feedback.task.createdAt.toISOString(),
+      updatedAt: feedback.task.updatedAt.toISOString(),
+    },
+    user: {
+      id: feedback.user.id,
+      username: feedback.user.username,
+      nickname: feedback.user.nickname,
+    },
+    type: feedback.type,
+    tags: feedback.tags,
+    content: feedback.content,
+    createdAt: feedback.createdAt.toISOString(),
+  }));
+
+  ctx.body = {
+    code: 200,
+    message: "ok",
+    data: {
+      feedbacks: feedbackList,
+      pagination: {
+        total,
         page: pageNum,
         pageSize: pageSizeNum,
       },
