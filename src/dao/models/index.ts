@@ -12,6 +12,7 @@ import McpForge from "./McpForge.js";
 import ForgeFavorite from "./ForgeFavorite.js";
 import FeaturedTask from "./FeaturedTask.js";
 import Feedback from "./Feedback.js";
+import LoginLog from "./LoginLog.js";
 
 // 定义模型关联
 User.hasMany(Conversation, { foreignKey: "userId", as: "conversations" });
@@ -74,6 +75,10 @@ Feedback.belongsTo(User, { foreignKey: "userId", as: "user" });
 Message.hasMany(Feedback, { foreignKey: "turnEndMessageId", as: "feedbacks" });
 Feedback.belongsTo(Message, { foreignKey: "turnEndMessageId", as: "turnEndMessage" });
 
+// LoginLog 与 User 的关联
+User.hasMany(LoginLog, { foreignKey: "userId", as: "loginLogs" });
+LoginLog.belongsTo(User, { foreignKey: "userId", as: "user" });
+
 export {
   sequelize,
   User,
@@ -86,4 +91,5 @@ export {
   ForgeFavorite,
   FeaturedTask,
   Feedback,
+  LoginLog,
 };

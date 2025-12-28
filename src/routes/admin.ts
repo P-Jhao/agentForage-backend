@@ -13,6 +13,7 @@ import ForgeDAO from "../dao/forgeDAO.js";
 import UserDAO from "../dao/userDAO.js";
 import CryptoService from "../service/cryptoService.js";
 import FeaturedTaskService from "../service/featuredTaskService.js";
+import StatisticsService from "../service/statisticsService.js";
 
 const router = new Router();
 
@@ -790,6 +791,49 @@ router.delete("/featured/:taskUuid", async (ctx) => {
   }
 
   ctx.body = { code: 200, message: "ok" };
+});
+
+// ==================== 数据统计 ====================
+
+// 统计查询参数
+interface StatisticsQueryParams {
+  range?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+/**
+ * 获取控制台统计数据
+ * GET /api/admin/statistics
+ */
+router.get("/statistics", async (ctx) => {
+  const { range = "last7d", startTime, endTime } = ctx.query as StatisticsQueryParams;
+
+  // 验证 range 参数
+  const validRanges = ["last24h", "last7d", "last30d", "all", "custom"];
+  if (!validRanges.includes(range)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的时间范围参数" };
+    return;
+  }
+
+  try {
+    const data = await StatisticsService.getStatistics({
+      range: range as "last24h" | "last7d" | "last30d" | "all" | "custom",
+      startTime,
+      endTime,
+    });
+
+    ctx.body = {
+      code: 200,
+      message: "ok",
+      data,
+    };
+  } catch (error) {
+    const err = error as Error & { status?: number };
+    ctx.status = err.status || 500;
+    ctx.body = { code: err.status || 500, message: err.message };
+  }
 });
 
 export default router;

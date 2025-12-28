@@ -105,7 +105,12 @@ router.post("/login", async (ctx) => {
     return;
   }
 
-  const result = await UserService.login({ username, password });
+  const result = await UserService.login({
+    username,
+    password,
+    ipAddress: ctx.request.ip || (ctx.request.headers["x-forwarded-for"] as string) || undefined,
+    userAgent: ctx.request.headers["user-agent"] || undefined,
+  });
   ctx.body = { code: 200, message: "登录成功", data: result };
 });
 

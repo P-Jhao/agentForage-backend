@@ -4,6 +4,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import UserDAO from "../dao/userDAO.js";
+import LoginLogDAO from "../dao/loginLogDAO.js";
 
 interface RegisterParams {
   username: string;
@@ -14,6 +15,8 @@ interface RegisterParams {
 interface LoginParams {
   username: string;
   password: string;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 interface LoginResult {
@@ -85,7 +88,12 @@ class UserService {
   /**
    * 用户登录
    */
-  static async login({ username, password }: LoginParams): Promise<LoginResult> {
+  static async login({
+    username,
+    password,
+    ipAddress,
+    userAgent,
+  }: LoginParams): Promise<LoginResult> {
     const user = await UserDAO.findByUsername(username);
     if (!user) {
       throw Object.assign(new Error("账号或密码错误"), { status: 401 });
@@ -103,6 +111,13 @@ class UserService {
 
     // 更新最近登录时间
     await UserDAO.updateLastLoginAt(user.id);
+
+    // 创建登录记录（用于统计 UV/PV）
+    await LoginLogDAO.create({
+      userId: user.id,
+      ipAddress,
+      userAgent,
+    });
 
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
