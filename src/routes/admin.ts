@@ -12,6 +12,7 @@ import FeedbackDAO from "../dao/feedbackDAO.js";
 import ForgeDAO from "../dao/forgeDAO.js";
 import UserDAO from "../dao/userDAO.js";
 import CryptoService from "../service/cryptoService.js";
+import FeaturedTaskService from "../service/featuredTaskService.js";
 
 const router = new Router();
 
@@ -711,6 +712,82 @@ router.put("/member/:id/restore", async (ctx) => {
 
   // 恢复
   await UserDAO.restoreMember(userId);
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+// ==================== 推荐示例管理 ====================
+
+/**
+ * 获取推荐示例列表（管理员）
+ * GET /api/admin/featured/list
+ */
+router.get("/featured/list", async (ctx) => {
+  const list = await FeaturedTaskService.getList();
+
+  ctx.body = {
+    code: 200,
+    message: "ok",
+    data: {
+      list: list.map((item) => ({
+        ...item,
+        createdAt: item.createdAt.toISOString(),
+      })),
+    },
+  };
+});
+
+// 更新推荐示例请求体
+interface UpdateFeaturedRequest {
+  coverImage?: string;
+  title?: string;
+  description?: string;
+  clonePrompt?: string;
+  enableThinking?: boolean;
+  enhanceMode?: string;
+  smartRoutingEnabled?: boolean;
+  sortOrder?: number;
+}
+
+/**
+ * 更新推荐示例（管理员）
+ * PUT /api/admin/featured/:taskUuid
+ */
+router.put("/featured/:taskUuid", async (ctx) => {
+  const { taskUuid } = ctx.params;
+  const body = ctx.request.body as UpdateFeaturedRequest;
+
+  // 检查推荐示例是否存在
+  const existing = await FeaturedTaskService.getByTaskUuid(taskUuid);
+  if (!existing) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "该任务不是推荐示例" };
+    return;
+  }
+
+  // 更新推荐示例
+  await FeaturedTaskService.setFeatured({
+    taskUuid,
+    ...body,
+  });
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+/**
+ * 取消推荐示例（管理员）
+ * DELETE /api/admin/featured/:taskUuid
+ */
+router.delete("/featured/:taskUuid", async (ctx) => {
+  const { taskUuid } = ctx.params;
+
+  const success = await FeaturedTaskService.removeFeatured(taskUuid);
+
+  if (!success) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "该任务不是推荐示例" };
+    return;
+  }
 
   ctx.body = { code: 200, message: "ok" };
 });
