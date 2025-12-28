@@ -5,7 +5,7 @@
 import Router from "@koa/router";
 import { Op } from "sequelize";
 import { tokenAuth, operatorAuth } from "../middleware/index.js";
-import { Conversation, User, Message } from "../dao/models/index.js";
+import { Conversation, User, Message, Agent } from "../dao/models/index.js";
 import TaskDAO from "../dao/taskDAO.js";
 import FeedbackDAO from "../dao/feedbackDAO.js";
 
@@ -69,7 +69,7 @@ router.get("/task/list", async (ctx) => {
     ];
   }
 
-  // 查询任务列表（包含创建者信息）
+  // 查询任务列表（包含创建者信息和关联的 Forge）
   const { count, rows: tasks } = await Conversation.findAndCountAll({
     where,
     include: [
@@ -78,6 +78,12 @@ router.get("/task/list", async (ctx) => {
         as: "user",
         attributes: ["id", "username", "nickname"],
         required: true,
+      },
+      {
+        model: Agent,
+        as: "agent",
+        attributes: ["id", "displayName", "avatar"],
+        required: false, // 左连接，允许 agentId 为空
       },
     ],
     order: [["updatedAt", "DESC"]],
@@ -123,22 +129,37 @@ router.get("/task/list", async (ctx) => {
   }
 
   // 构建响应数据
-  const taskList = tasks.map((task) => ({
-    id: task.id,
-    uuid: task.uuid,
-    title: task.title,
-    status: task.status,
-    creator: {
-      id: (task as unknown as { user: { id: number; username: string; nickname: string } }).user.id,
-      username: (task as unknown as { user: { id: number; username: string; nickname: string } })
-        .user.username,
-      nickname: (task as unknown as { user: { id: number; username: string; nickname: string } })
-        .user.nickname,
-    },
-    totalTokens: tokenMap.get(task.id) || 0,
-    createdAt: task.createdAt.toISOString(),
-    updatedAt: task.updatedAt.toISOString(),
-  }));
+  // 定义关联数据类型
+  type TaskWithRelations = (typeof tasks)[0] & {
+    user: { id: number; username: string; nickname: string };
+    agent: { id: number; displayName: string; avatar: string | null } | null;
+  };
+
+  const taskList = tasks.map((task) => {
+    const t = task as unknown as TaskWithRelations;
+    return {
+      id: task.id,
+      uuid: task.uuid,
+      title: task.title,
+      status: task.status,
+      creator: {
+        id: t.user.id,
+        username: t.user.username,
+        nickname: t.user.nickname,
+      },
+      // 关联的 Forge 信息
+      agent: t.agent
+        ? {
+            id: t.agent.id,
+            displayName: t.agent.displayName,
+            avatar: t.agent.avatar,
+          }
+        : null,
+      totalTokens: tokenMap.get(task.id) || 0,
+      createdAt: task.createdAt.toISOString(),
+      updatedAt: task.updatedAt.toISOString(),
+    };
+  });
 
   // Token 排序（在内存中排序，因为 token 是从 JSON 解析的）
   if (sortBy === "tokens") {
