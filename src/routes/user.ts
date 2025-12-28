@@ -238,8 +238,8 @@ router.post("/avatar", tokenAuth(), avatarUpload.single("avatar"), async (ctx) =
     return;
   }
 
-  // 生成头像 URL
-  const avatarUrl = `/uploads/avatars/${file.filename}`;
+  // 生成头像 URL（使用 /api 前缀，便于前端代理）
+  const avatarUrl = `/api/uploads/avatars/${file.filename}`;
 
   try {
     // 获取旧头像路径，用于删除
@@ -250,8 +250,13 @@ router.post("/avatar", tokenAuth(), avatarUpload.single("avatar"), async (ctx) =
     await UserService.updateProfile({ userId, avatar: avatarUrl });
 
     // 删除旧头像文件（如果存在且不是默认头像）
-    if (oldAvatar && oldAvatar.startsWith("/uploads/avatars/")) {
-      const oldPath = path.join(__dirname, "../../public", oldAvatar);
+    if (
+      oldAvatar &&
+      (oldAvatar.startsWith("/api/uploads/avatars/") || oldAvatar.startsWith("/uploads/avatars/"))
+    ) {
+      // 移除 /api 前缀获取实际文件路径
+      const relativePath = oldAvatar.replace(/^\/api/, "");
+      const oldPath = path.join(__dirname, "../../public", relativePath);
       if (fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
       }

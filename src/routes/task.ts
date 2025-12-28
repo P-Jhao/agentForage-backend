@@ -168,7 +168,22 @@ router.get("/:id", tokenAuth(), async (ctx) => {
     return;
   }
 
-  ctx.body = { code: 200, message: "ok", data: task };
+  // 将 Sequelize 模型转换为普通对象
+  const taskData = task.get({ plain: true });
+
+  // 如果是查看他人任务，添加任务创建者信息
+  if (task.userId !== userId) {
+    const owner = await UserDAO.findById(task.userId);
+    const ownerName = owner?.nickname || owner?.username || "未知用户";
+    const ownerAvatar = owner?.avatar || null;
+    ctx.body = {
+      code: 200,
+      message: "ok",
+      data: { ...taskData, ownerName, ownerAvatar },
+    };
+  } else {
+    ctx.body = { code: 200, message: "ok", data: taskData };
+  }
 });
 
 /**

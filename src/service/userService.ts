@@ -23,6 +23,7 @@ interface LoginResult {
     username: string;
     nickname: string;
     role: "user" | "premium" | "root" | "operator";
+    avatar: string | null;
   };
 }
 
@@ -115,6 +116,7 @@ class UserService {
         id: user.id,
         username: user.username,
         nickname: user.nickname,
+        avatar: user.avatar,
         role: user.role,
       },
     };

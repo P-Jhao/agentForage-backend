@@ -106,6 +106,7 @@ router.get("/task/:id", async (ctx) => {
   // 获取任务所有者信息
   const owner = await UserDAO.findById(task.userId);
   const ownerName = owner?.nickname || owner?.username || "未知用户";
+  const ownerAvatar = owner?.avatar || null;
 
   ctx.body = {
     code: 200,
@@ -113,6 +114,7 @@ router.get("/task/:id", async (ctx) => {
     data: {
       ...taskData,
       ownerName, // 任务所有者名称
+      ownerAvatar, // 任务所有者头像
       shareMode: verifyResult.payload?.mode, // 返回分享模式
     },
   };
