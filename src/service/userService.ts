@@ -22,7 +22,7 @@ interface LoginResult {
     id: number;
     username: string;
     nickname: string;
-    role: "user" | "root" | "operator";
+    role: "user" | "premium" | "root" | "operator";
   };
 }
 
@@ -47,11 +47,19 @@ class UserService {
     if (!username || !password) {
       throw Object.assign(new Error("账号和密码不能为空"), { status: 400 });
     }
+    // 验证账号格式：只允许英文字母和数字
+    if (!/^[a-zA-Z0-9]+$/.test(username)) {
+      throw Object.assign(new Error("账号只能包含英文字母和数字"), { status: 400 });
+    }
     if (username.length < 3 || username.length > 20) {
       throw Object.assign(new Error("账号长度需在 3-20 字符之间"), { status: 400 });
     }
     if (nickname && nickname.length > 20) {
       throw Object.assign(new Error("名称长度不能超过 20 字符"), { status: 400 });
+    }
+    // 验证密码格式：只允许英文字母和数字
+    if (!/^[a-zA-Z0-9]+$/.test(password)) {
+      throw Object.assign(new Error("密码只能包含英文字母和数字"), { status: 400 });
     }
     if (password.length < 6 || password.length > 32) {
       throw Object.assign(new Error("密码长度需在 6-32 字符之间"), { status: 400 });
@@ -82,10 +90,18 @@ class UserService {
       throw Object.assign(new Error("账号或密码错误"), { status: 401 });
     }
 
+    // 检查用户是否被删除
+    if (user.isDeleted) {
+      throw Object.assign(new Error("该账号已被禁用"), { status: 403 });
+    }
+
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
       throw Object.assign(new Error("账号或密码错误"), { status: 401 });
     }
+
+    // 更新最近登录时间
+    await UserDAO.updateLastLoginAt(user.id);
 
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
@@ -127,7 +143,11 @@ class UserService {
    * 修改密码
    */
   static async changePassword({ userId, oldPassword, newPassword }: ChangePasswordParams) {
-    // 验证新密码格式
+    // 验证新密码格式：只允许英文字母和数字
+    if (!/^[a-zA-Z0-9]+$/.test(newPassword)) {
+      throw Object.assign(new Error("密码只能包含英文字母和数字"), { status: 400 });
+    }
+    // 验证新密码长度
     if (!newPassword || newPassword.length < 6 || newPassword.length > 32) {
       throw Object.assign(new Error("新密码长度需在 6-32 字符之间"), { status: 400 });
     }

@@ -3,12 +3,15 @@
  * 仅允许 operator 角色访问
  */
 import Router from "@koa/router";
+import bcrypt from "bcryptjs";
 import { Op } from "sequelize";
 import { tokenAuth, operatorAuth } from "../middleware/index.js";
 import { Conversation, User, Message, Agent, Mcp } from "../dao/models/index.js";
 import TaskDAO from "../dao/taskDAO.js";
 import FeedbackDAO from "../dao/feedbackDAO.js";
 import ForgeDAO from "../dao/forgeDAO.js";
+import UserDAO from "../dao/userDAO.js";
+import CryptoService from "../service/cryptoService.js";
 
 const router = new Router();
 
@@ -433,6 +436,281 @@ router.delete("/forge/:id", async (ctx) => {
 
   // 软删除
   await ForgeDAO.delete(forgeId);
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+// ==================== 成员管理 ====================
+
+// 成员列表请求参数
+interface AdminMemberListQuery {
+  page?: string;
+  pageSize?: string;
+  keyword?: string;
+  role?: "all" | "user" | "premium" | "root" | "operator";
+  status?: "all" | "active" | "deleted";
+}
+
+/**
+ * 获取成员列表
+ * GET /api/admin/member/list
+ */
+router.get("/member/list", async (ctx) => {
+  const {
+    page = "1",
+    pageSize = "10",
+    keyword,
+    role = "all",
+    status = "all",
+  } = ctx.query as AdminMemberListQuery;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+
+  const { members, total } = await UserDAO.getMemberList({
+    page: pageNum,
+    pageSize: pageSizeNum,
+    keyword,
+    role,
+    status,
+  });
+
+  // 格式化响应数据
+  const memberList = members.map((member) => ({
+    id: member.id,
+    username: member.username,
+    nickname: member.nickname,
+    avatar: member.avatar,
+    email: member.email,
+    role: member.role,
+    adminNote: member.adminNote,
+    isDeleted: member.isDeleted,
+    taskCount: member.taskCount,
+    totalTokens: member.totalTokens,
+    createdAt: member.createdAt.toISOString(),
+    lastLoginAt: member.lastLoginAt?.toISOString() || null,
+  }));
+
+  ctx.body = {
+    code: 200,
+    message: "ok",
+    data: {
+      members: memberList,
+      pagination: {
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum,
+      },
+    },
+  };
+});
+
+// 更新成员请求体
+interface UpdateMemberRequest {
+  username?: string;
+  email?: string | null;
+  role?: "user" | "premium" | "root" | "operator";
+  adminNote?: string | null;
+}
+
+/**
+ * 更新成员信息
+ * PUT /api/admin/member/:id
+ */
+router.put("/member/:id", async (ctx) => {
+  const { id } = ctx.params;
+  const userId = parseInt(id, 10);
+
+  if (isNaN(userId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的用户 ID" };
+    return;
+  }
+
+  // 检查用户是否存在
+  const user = await UserDAO.findById(userId);
+  if (!user) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "用户不存在" };
+    return;
+  }
+
+  const { username, email, role, adminNote } = ctx.request.body as UpdateMemberRequest;
+
+  // 如果修改用户名，检查是否重复
+  if (username && username !== user.username) {
+    const existing = await UserDAO.findByUsername(username);
+    if (existing) {
+      ctx.status = 400;
+      ctx.body = { code: 400, message: "用户名已存在" };
+      return;
+    }
+  }
+
+  // 不允许修改 operator 和 root 的角色
+  if (role && (user.role === "operator" || user.role === "root") && role !== user.role) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "不能修改管理员或运营员的角色" };
+    return;
+  }
+
+  // 不允许将用户角色修改为 operator 或 root（这两个角色是唯一的）
+  if (role && (role === "operator" || role === "root")) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "不能将用户设置为管理员或运营员" };
+    return;
+  }
+
+  // 构建更新数据
+  const updateData: UpdateMemberRequest = {};
+  if (username !== undefined) updateData.username = username;
+  if (email !== undefined) updateData.email = email;
+  if (role !== undefined) updateData.role = role;
+  if (adminNote !== undefined) updateData.adminNote = adminNote;
+
+  if (Object.keys(updateData).length === 0) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "没有需要更新的内容" };
+    return;
+  }
+
+  await UserDAO.updateMember(userId, updateData);
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+// 重置密码请求体
+interface ResetPasswordRequest {
+  encryptedPassword: string; // RSA 加密后的新密码
+}
+
+/**
+ * 重置成员密码
+ * PUT /api/admin/member/:id/password
+ */
+router.put("/member/:id/password", async (ctx) => {
+  const { id } = ctx.params;
+  const userId = parseInt(id, 10);
+
+  if (isNaN(userId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的用户 ID" };
+    return;
+  }
+
+  // 检查用户是否存在
+  const user = await UserDAO.findById(userId);
+  if (!user) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "用户不存在" };
+    return;
+  }
+
+  // 不允许重置 operator 和 root 的密码
+  if (user.role === "operator" || user.role === "root") {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "不能重置管理员或运营员的密码" };
+    return;
+  }
+
+  const { encryptedPassword } = ctx.request.body as ResetPasswordRequest;
+
+  if (!encryptedPassword) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "请输入新密码" };
+    return;
+  }
+
+  // RSA 解密密码
+  let password: string;
+  try {
+    password = CryptoService.rsaDecrypt(encryptedPassword);
+  } catch (error) {
+    console.error("[admin.ts] RSA 解密密码失败:", error);
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "密码解密失败，请刷新页面重试" };
+    return;
+  }
+
+  // 验证密码格式
+  if (password.length < 6 || password.length > 32) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "密码长度需在 6-32 字符之间" };
+    return;
+  }
+
+  // 加密新密码并更新
+  const hashedPassword = await bcrypt.hash(password, 10);
+  await UserDAO.updatePassword(userId, hashedPassword);
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+/**
+ * 删除成员（软删除）
+ * DELETE /api/admin/member/:id
+ */
+router.delete("/member/:id", async (ctx) => {
+  const { id } = ctx.params;
+  const userId = parseInt(id, 10);
+
+  if (isNaN(userId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的用户 ID" };
+    return;
+  }
+
+  // 检查用户是否存在
+  const user = await UserDAO.findById(userId);
+  if (!user) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "用户不存在" };
+    return;
+  }
+
+  // 不允许删除 operator 和 root
+  if (user.role === "operator" || user.role === "root") {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "不能删除管理员或运营员" };
+    return;
+  }
+
+  // 软删除
+  await UserDAO.softDeleteMember(userId);
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+/**
+ * 恢复已删除的成员
+ * PUT /api/admin/member/:id/restore
+ */
+router.put("/member/:id/restore", async (ctx) => {
+  const { id } = ctx.params;
+  const userId = parseInt(id, 10);
+
+  if (isNaN(userId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的用户 ID" };
+    return;
+  }
+
+  // 检查用户是否存在
+  const user = await UserDAO.findById(userId);
+  if (!user) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "用户不存在" };
+    return;
+  }
+
+  if (!user.isDeleted) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "该用户未被删除" };
+    return;
+  }
+
+  // 恢复
+  await UserDAO.restoreMember(userId);
 
   ctx.body = { code: 200, message: "ok" };
 });
