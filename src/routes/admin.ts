@@ -5,9 +5,10 @@
 import Router from "@koa/router";
 import { Op } from "sequelize";
 import { tokenAuth, operatorAuth } from "../middleware/index.js";
-import { Conversation, User, Message, Agent } from "../dao/models/index.js";
+import { Conversation, User, Message, Agent, Mcp } from "../dao/models/index.js";
 import TaskDAO from "../dao/taskDAO.js";
 import FeedbackDAO from "../dao/feedbackDAO.js";
+import ForgeDAO from "../dao/forgeDAO.js";
 
 const router = new Router();
 
@@ -282,6 +283,156 @@ router.delete("/task/:id", async (ctx) => {
 
   // 删除任务
   await TaskDAO.delete(uuid);
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+// Forge 列表请求参数
+interface AdminForgeListQuery {
+  page?: string;
+  pageSize?: string;
+  keyword?: string;
+  status?: "all" | "active" | "deleted";
+  permission?: "all" | "public" | "private";
+}
+
+/**
+ * 获取所有 Forge 列表（管理员）
+ * GET /api/admin/forge/list
+ */
+router.get("/forge/list", async (ctx) => {
+  const {
+    page = "1",
+    pageSize = "10",
+    keyword,
+    status = "all",
+    permission = "all",
+  } = ctx.query as AdminForgeListQuery;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+  const offset = (pageNum - 1) * pageSizeNum;
+
+  // 构建查询条件
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = {};
+
+  // 状态筛选
+  if (status === "active") {
+    where.isActive = true;
+  } else if (status === "deleted") {
+    where.isActive = false;
+  }
+  // status === "all" 时不添加 isActive 条件，显示所有
+
+  // 权限筛选
+  if (permission === "public") {
+    where.isPublic = true;
+  } else if (permission === "private") {
+    where.isPublic = false;
+  }
+
+  // 关键词搜索（Forge 名称或创建者名称）
+  if (keyword) {
+    where[Op.or] = [
+      { displayName: { [Op.like]: `%${keyword}%` } },
+      { "$creator.username$": { [Op.like]: `%${keyword}%` } },
+      { "$creator.nickname$": { [Op.like]: `%${keyword}%` } },
+    ];
+  }
+
+  // 查询 Forge 列表（包含创建者信息和关联的 MCP）
+  const { count, rows: forges } = await Agent.findAndCountAll({
+    where,
+    include: [
+      {
+        model: User,
+        as: "creator",
+        attributes: ["id", "username", "nickname"],
+        required: true,
+      },
+      {
+        model: Mcp,
+        as: "mcps",
+        attributes: ["id", "name"],
+        through: { attributes: [] }, // 不返回中间表字段
+        required: false,
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+    limit: pageSizeNum,
+    offset,
+    subQuery: false,
+  });
+
+  // 定义关联数据类型
+  type ForgeWithRelations = (typeof forges)[0] & {
+    creator: { id: number; username: string; nickname: string | null };
+    mcps: Array<{ id: number; name: string }>;
+  };
+
+  // 构建响应数据
+  const forgeList = forges.map((forge) => {
+    const f = forge as unknown as ForgeWithRelations;
+    return {
+      id: forge.id,
+      displayName: forge.displayName,
+      description: forge.description,
+      avatar: forge.avatar,
+      isPublic: forge.isPublic,
+      isActive: forge.isActive,
+      usageCount: forge.usageCount,
+      creator: {
+        id: f.creator.id,
+        username: f.creator.username,
+        nickname: f.creator.nickname,
+      },
+      mcps: f.mcps.map((mcp) => ({
+        id: mcp.id,
+        name: mcp.name,
+      })),
+      createdAt: forge.createdAt.toISOString(),
+    };
+  });
+
+  ctx.body = {
+    code: 200,
+    message: "ok",
+    data: {
+      forges: forgeList,
+      pagination: {
+        total: count,
+        page: pageNum,
+        pageSize: pageSizeNum,
+      },
+    },
+  };
+});
+
+/**
+ * 删除 Forge（软删除）
+ * DELETE /api/admin/forge/:id
+ */
+router.delete("/forge/:id", async (ctx) => {
+  const { id } = ctx.params;
+  const forgeId = parseInt(id, 10);
+
+  if (isNaN(forgeId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的 Forge ID" };
+    return;
+  }
+
+  // 检查 Forge 是否存在
+  const forge = await Agent.findByPk(forgeId);
+  if (!forge) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "Forge 不存在" };
+    return;
+  }
+
+  // 软删除
+  await ForgeDAO.delete(forgeId);
 
   ctx.body = { code: 200, message: "ok" };
 });
