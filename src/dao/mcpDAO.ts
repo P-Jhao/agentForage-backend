@@ -2,25 +2,28 @@
  * MCP 数据访问对象
  */
 import { Op } from "sequelize";
-import { Mcp } from "./models/index.js";
-import type { McpStatus, McpCreationAttributes } from "./models/Mcp.js";
+import { Mcp, User } from "./models/index.js";
+import type { McpStatus, McpCreationAttributes, McpSource } from "./models/Mcp.js";
 
-// 创建 MCP 的参数类型
-export type CreateMcpData = Omit<McpCreationAttributes, "source" | "isPublic" | "status">;
+// 创建 MCP 的参数类型（不含 source 和 status，由系统自动设置）
+export type CreateMcpData = Omit<McpCreationAttributes, "source" | "status">;
 
 // 更新 MCP 的参数类型
-export type UpdateMcpData = Partial<Omit<McpCreationAttributes, "userId" | "source" | "isPublic">>;
+export type UpdateMcpData = Partial<Omit<McpCreationAttributes, "userId" | "source">>;
+
+// MCP 列表筛选类型
+export type McpFilterType = "all" | "builtin" | "mine" | "other";
 
 class McpDAO {
   /**
    * 创建 MCP
    * @param data MCP 数据
+   * @param source MCP 来源（builtin: 管理员创建, user: 普通用户创建）
    */
-  static async create(data: CreateMcpData) {
+  static async create(data: CreateMcpData, source: McpSource = "builtin") {
     return await Mcp.create({
       ...data,
-      source: "builtin",
-      isPublic: true,
+      source,
       status: "disconnected",
     });
   }
@@ -34,11 +37,20 @@ class McpDAO {
   }
 
   /**
-   * 查询所有 MCP 列表
-   * @param keyword 搜索关键词（可选）
-   * @param isAdmin 是否为管理员（普通用户过滤掉 closed 状态的 MCP）
+   * 查询所有 MCP 列表（含创建者信息）
+   * @param options 查询选项
+   * @param options.keyword 搜索关键词（可选）
+   * @param options.isAdmin 是否为管理员
+   * @param options.userId 当前用户 ID
+   * @param options.filter 筛选类型：all/builtin/mine/other
    */
-  static async findAll(keyword?: string, isAdmin: boolean = false) {
+  static async findAll(options: {
+    keyword?: string;
+    isAdmin: boolean;
+    userId: number;
+    filter?: McpFilterType;
+  }) {
+    const { keyword, isAdmin, userId, filter = "all" } = options;
     const where: Record<string, unknown> = {};
 
     // 普通用户过滤掉 closed 状态的 MCP
@@ -46,17 +58,66 @@ class McpDAO {
       where.status = { [Op.ne]: "closed" };
     }
 
-    if (keyword) {
-      where[Op.or as unknown as string] = [
-        { name: { [Op.like]: `%${keyword}%` } },
-        { description: { [Op.like]: `%${keyword}%` } },
-      ];
+    // 可见性过滤：普通用户只能看到公开的 MCP 或自己创建的私有 MCP
+    if (!isAdmin) {
+      where[Op.or as unknown as string] = [{ isPublic: true }, { userId }];
     }
 
-    return await Mcp.findAll({
+    // 筛选类型
+    switch (filter) {
+      case "builtin":
+        // 内置：管理员创建的公开 MCP
+        where.source = "builtin";
+        where.isPublic = true;
+        break;
+      case "mine":
+        // 我的：当前用户创建的 MCP
+        where.userId = userId;
+        break;
+      case "other":
+        // 其他：其他用户创建的公开 MCP（非内置）
+        where.source = "user";
+        where.isPublic = true;
+        where.userId = { [Op.ne]: userId };
+        break;
+      // all: 不添加额外筛选
+    }
+
+    // 查询配置：包含创建者信息
+    const queryOptions = {
       where,
-      order: [["createdAt", "DESC"]],
-    });
+      order: [["createdAt", "DESC"]] as [string, string][],
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "nickname"],
+        },
+      ],
+    };
+
+    // 关键词搜索
+    if (keyword) {
+      const keywordCondition = {
+        [Op.or]: [
+          { name: { [Op.like]: `%${keyword}%` } },
+          { description: { [Op.like]: `%${keyword}%` } },
+        ],
+      };
+      if (Object.keys(where).length > 0) {
+        return await Mcp.findAll({
+          ...queryOptions,
+          where: { [Op.and]: [where, keywordCondition] },
+        });
+      } else {
+        return await Mcp.findAll({
+          ...queryOptions,
+          where: keywordCondition,
+        });
+      }
+    }
+
+    return await Mcp.findAll(queryOptions);
   }
 
   /**

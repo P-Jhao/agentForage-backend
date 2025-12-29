@@ -8,8 +8,8 @@ import { sequelize } from "../../config/database.js";
 // MCP 传输方式类型
 export type McpTransportType = "stdio" | "sse" | "streamableHttp";
 
-// MCP 来源类型（固定为 builtin）
-export type McpSource = "builtin";
+// MCP 来源类型
+export type McpSource = "builtin" | "user";
 
 // MCP 连接状态
 // connected: 连通成功
@@ -30,8 +30,8 @@ export interface McpAttributes {
   // sse/streamableHttp 类型使用 url + headers
   url: string | null; // 连接地址（sse/streamableHttp 类型必选）
   userId: number; // 创建者 ID
-  source: McpSource; // 来源（固定为 builtin）
-  isPublic: boolean; // 是否公开（固定为 true）
+  source: McpSource; // 来源：builtin（管理员创建）/ user（普通用户创建）
+  isPublic: boolean; // 是否公开
   timeout: number | null; // 超时时间（秒，可选）
   headers: string | null; // 请求头（JSON 字符串，可选，用于 sse/http）
   remarks: string | null; // 备注（可选）
@@ -128,16 +128,16 @@ Mcp.init(
       comment: "创建者 ID",
     },
     source: {
-      type: DataTypes.ENUM("builtin"),
+      type: DataTypes.ENUM("builtin", "user"),
       allowNull: false,
       defaultValue: "builtin",
-      comment: "来源（固定为 builtin）",
+      comment: "来源：builtin（管理员创建）/ user（普通用户创建）",
     },
     isPublic: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: true,
-      comment: "是否公开（固定为 true）",
+      defaultValue: false,
+      comment: "是否公开",
     },
     timeout: {
       type: DataTypes.INTEGER,

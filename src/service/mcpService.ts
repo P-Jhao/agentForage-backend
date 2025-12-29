@@ -5,7 +5,7 @@
 import McpDAO from "../dao/mcpDAO.js";
 import McpForgeDAO from "../dao/mcpForgeDAO.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
-import type { CreateMcpData, UpdateMcpData } from "../dao/mcpDAO.js";
+import type { CreateMcpData, UpdateMcpData, McpFilterType } from "../dao/mcpDAO.js";
 import { mcpManager, type MCPTool } from "../mcp/index.js";
 
 // MCP 工具接口
@@ -61,7 +61,7 @@ class McpService {
    * 创建 MCP
    * 管理员可创建所有类型，普通用户只能创建 SSE 和 StreamableHTTP 类型
    * 创建后自动尝试连接
-   * @param data MCP 数据
+   * @param data MCP 数据（含 isPublic）
    * @param user 当前用户
    */
   static async createMCP(data: Omit<CreateMcpData, "userId">, user: JwtPayload) {
@@ -70,11 +70,17 @@ class McpService {
       throw Object.assign(new Error("普通用户无权创建 stdio 类型的 MCP"), { status: 403 });
     }
 
+    // 根据用户角色设置 source
+    const source = user.role === "root" ? "builtin" : "user";
+
     // 创建 MCP
-    const mcp = await McpDAO.create({
-      ...data,
-      userId: user.id,
-    });
+    const mcp = await McpDAO.create(
+      {
+        ...data,
+        userId: user.id,
+      },
+      source
+    );
 
     // 自动尝试连接
     try {
@@ -94,12 +100,19 @@ class McpService {
 
   /**
    * 获取 MCP 列表
-   * @param keyword 搜索关键词（可选）
-   * @param user 当前用户（用于判断是否为管理员）
+   * @param options 查询选项
+   * @param options.keyword 搜索关键词（可选）
+   * @param options.filter 筛选类型：all/builtin/mine/other
+   * @param user 当前用户
    */
-  static async getMCPList(keyword?: string, user?: JwtPayload) {
-    const isAdmin = user?.role === "root";
-    return McpDAO.findAll(keyword, isAdmin);
+  static async getMCPList(options: { keyword?: string; filter?: McpFilterType }, user: JwtPayload) {
+    const isAdmin = user.role === "root";
+    return McpDAO.findAll({
+      keyword: options.keyword,
+      isAdmin,
+      userId: user.id,
+      filter: options.filter,
+    });
   }
 
   /**

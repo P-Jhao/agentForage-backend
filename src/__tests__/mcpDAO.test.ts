@@ -219,7 +219,10 @@ describe("McpDAO", () => {
         userId: adminUser.id,
       });
 
-      const list = await McpDAO.findAll();
+      const list = await McpDAO.findAll({
+        isAdmin: true,
+        userId: adminUser.id,
+      });
       expect(list.length).toBe(2);
       // 最新创建的应该在前面
       expect(list[0].name).toBe("MCP 2");
@@ -245,12 +248,20 @@ describe("McpDAO", () => {
       });
 
       // 按名称搜索
-      const result1 = await McpDAO.findAll("文件");
+      const result1 = await McpDAO.findAll({
+        keyword: "文件",
+        isAdmin: true,
+        userId: adminUser.id,
+      });
       expect(result1.length).toBe(1);
       expect(result1[0].name).toBe("文件系统 MCP");
 
       // 按描述搜索
-      const result2 = await McpDAO.findAll("搜索");
+      const result2 = await McpDAO.findAll({
+        keyword: "搜索",
+        isAdmin: true,
+        userId: adminUser.id,
+      });
       expect(result2.length).toBe(1);
       expect(result2[0].name).toBe("网页搜索 MCP");
     });

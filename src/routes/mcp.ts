@@ -28,6 +28,7 @@ router.post("/", tokenAuth(), async (ctx) => {
     headers,
     remarks,
     example,
+    isPublic,
   } = ctx.request.body as {
     name: string;
     transportType: "stdio" | "sse" | "streamableHttp";
@@ -40,6 +41,7 @@ router.post("/", tokenAuth(), async (ctx) => {
     headers?: string;
     remarks?: string;
     example?: string;
+    isPublic?: boolean;
   };
 
   // 参数验证
@@ -134,6 +136,7 @@ router.post("/", tokenAuth(), async (ctx) => {
         headers,
         remarks,
         example,
+        isPublic: isPublic ?? false, // 默认私有
       },
       user
     );
@@ -147,13 +150,21 @@ router.post("/", tokenAuth(), async (ctx) => {
 
 /**
  * 获取 MCP 列表
- * GET /api/mcp/list?keyword=xxx
- * 普通用户只能看到非 closed 状态的 MCP
+ * GET /api/mcp/list?keyword=xxx&filter=all|builtin|mine|other
+ * 普通用户只能看到公开的 MCP 或自己创建的私有 MCP
  */
 router.get("/list", tokenAuth(), async (ctx) => {
-  const { keyword } = ctx.query as { keyword?: string };
+  const { keyword, filter } = ctx.query as { keyword?: string; filter?: string };
   const user = ctx.state.user as JwtPayload;
-  const list = await McpService.getMCPList(keyword, user);
+
+  // 验证 filter 参数
+  const validFilters = ["all", "builtin", "mine", "other"];
+  const filterType = validFilters.includes(filter || "") ? filter : "all";
+
+  const list = await McpService.getMCPList(
+    { keyword, filter: filterType as "all" | "builtin" | "mine" | "other" },
+    user
+  );
   ctx.body = { code: 200, message: "ok", data: list };
 });
 
@@ -282,6 +293,7 @@ router.put("/:id", tokenAuth(), async (ctx) => {
     headers,
     remarks,
     example,
+    isPublic,
   } = ctx.request.body as {
     name?: string;
     transportType?: "stdio" | "sse" | "streamableHttp";
@@ -294,6 +306,7 @@ router.put("/:id", tokenAuth(), async (ctx) => {
     headers?: string;
     remarks?: string;
     example?: string;
+    isPublic?: boolean;
   };
 
   if (isNaN(id)) {
@@ -376,6 +389,7 @@ router.put("/:id", tokenAuth(), async (ctx) => {
         headers,
         remarks,
         example,
+        isPublic,
       },
       user
     );
