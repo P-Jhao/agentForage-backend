@@ -6,7 +6,13 @@ import McpDAO from "../dao/mcpDAO.js";
 import McpForgeDAO from "../dao/mcpForgeDAO.js";
 import type { JwtPayload } from "../middleware/tokenAuth.js";
 import type { CreateMcpData, UpdateMcpData, McpFilterType } from "../dao/mcpDAO.js";
+import type { McpStatus } from "../dao/models/Mcp.js";
 import { mcpManager, type MCPTool } from "../mcp/index.js";
+
+// 动态导入 ForgeService（避免循环依赖）
+const loadForgeService = async () => {
+  return (await import("./forgeService.js")).default;
+};
 
 // MCP 工具接口
 interface McpTool {
@@ -46,6 +52,47 @@ interface McpDetailResult {
 }
 
 class McpService {
+  /**
+   * 统一的 MCP 状态变更方法
+   * 更新数据库状态，并根据状态变化触发关联 Forge 的摘要更新
+   * @param mcpId MCP ID
+   * @param newStatus 新状态
+   * @param previousStatus 之前的状态（可选，用于判断是否需要更新摘要）
+   */
+  static async updateMcpStatus(
+    mcpId: number,
+    newStatus: McpStatus,
+    previousStatus?: McpStatus
+  ): Promise<void> {
+    // 更新数据库状态
+    await McpDAO.updateStatus(mcpId, newStatus);
+
+    // 判断是否需要更新关联 Forge 的摘要
+    const wasAvailable = previousStatus === "connected";
+    const isNowAvailable = newStatus === "connected";
+
+    // 状态没有实质变化，不需要更新摘要
+    if (wasAvailable === isNowAvailable) {
+      return;
+    }
+
+    // 异步更新关联 Forge 的摘要（不阻塞返回）
+    setImmediate(async () => {
+      try {
+        const ForgeService = await loadForgeService();
+        if (isNowAvailable) {
+          // MCP 变为可用，重新生成包含该 MCP 工具的摘要
+          await ForgeService.updateSummariesOnMcpAvailable(mcpId);
+        } else {
+          // MCP 变为不可用，更新摘要（排除该 MCP 的工具）
+          await ForgeService.updateSummariesOnMcpUnavailable(mcpId);
+        }
+      } catch (error) {
+        console.error(`[McpService] 更新 Forge 摘要失败:`, (error as Error).message);
+      }
+    });
+  }
+
   /**
    * 检查用户是否为管理员
    * @param user 用户信息
@@ -280,8 +327,8 @@ class McpService {
       // 即使断开失败也继续更新状态
     }
 
-    // 更新状态为 closed（管理员主动关闭）
-    await McpDAO.updateStatus(id, "closed");
+    // 更新状态为 closed（管理员主动关闭），并触发摘要更新
+    await this.updateMcpStatus(id, "closed", mcp.status);
 
     return { success: true };
   }
@@ -298,6 +345,8 @@ class McpService {
       throw Object.assign(new Error("MCP 不存在"), { status: 404 });
     }
 
+    const previousStatus = mcp.status;
+
     try {
       // 先断开现有连接（如果有）
       await mcpManager.disconnect(id);
@@ -306,18 +355,15 @@ class McpService {
       const success = await mcpManager.connect(id);
 
       if (success) {
-        // 连接成功，更新状态
-        await McpDAO.updateStatus(id, "connected");
+        await this.updateMcpStatus(id, "connected", previousStatus);
         return { status: "connected" as const };
       } else {
-        // 连接失败，更新状态
-        await McpDAO.updateStatus(id, "disconnected");
+        await this.updateMcpStatus(id, "disconnected", previousStatus);
         return { status: "disconnected" as const };
       }
     } catch (error) {
       console.error(`MCP ${id} 重连失败:`, (error as Error).message);
-      // 连接失败，更新状态
-      await McpDAO.updateStatus(id, "disconnected");
+      await this.updateMcpStatus(id, "disconnected", previousStatus);
       throw Object.assign(new Error(`MCP 连接失败: ${(error as Error).message}`), { status: 500 });
     }
   }

@@ -14,6 +14,7 @@ import UserDAO from "../dao/userDAO.js";
 import CryptoService from "../service/cryptoService.js";
 import FeaturedTaskService from "../service/featuredTaskService.js";
 import StatisticsService from "../service/statisticsService.js";
+import McpService from "../service/mcpService.js";
 
 const router = new Router();
 
@@ -1046,8 +1047,8 @@ router.put("/mcp/:id", async (ctx) => {
 
   const body = ctx.request.body as UpdateAdminMcpRequest;
 
-  // 构建更新数据
-  const updateData: Partial<UpdateAdminMcpRequest> = {};
+  // 构建更新数据（不包含 status，status 单独处理）
+  const updateData: Partial<Omit<UpdateAdminMcpRequest, "status">> = {};
   if (body.name !== undefined) updateData.name = body.name;
   if (body.description !== undefined) updateData.description = body.description;
   if (body.transportType !== undefined) updateData.transportType = body.transportType;
@@ -1058,15 +1059,22 @@ router.put("/mcp/:id", async (ctx) => {
   if (body.isPublic !== undefined) updateData.isPublic = body.isPublic;
   if (body.timeout !== undefined) updateData.timeout = body.timeout;
   if (body.remarks !== undefined) updateData.remarks = body.remarks;
-  if (body.status !== undefined) updateData.status = body.status;
 
-  if (Object.keys(updateData).length === 0) {
+  // 更新基本信息
+  if (Object.keys(updateData).length > 0) {
+    await Mcp.update(updateData, { where: { id: mcpId } });
+  }
+
+  // 如果状态发生变化，通过 McpService 统一处理（会触发摘要更新）
+  if (body.status !== undefined && body.status !== mcp.status) {
+    await McpService.updateMcpStatus(mcpId, body.status, mcp.status);
+  }
+
+  if (Object.keys(updateData).length === 0 && body.status === undefined) {
     ctx.status = 400;
     ctx.body = { code: 400, message: "没有需要更新的内容" };
     return;
   }
-
-  await Mcp.update(updateData, { where: { id: mcpId } });
 
   ctx.body = { code: 200, message: "ok" };
 });

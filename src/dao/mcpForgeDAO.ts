@@ -216,6 +216,47 @@ class McpForgeDAO {
     });
     return associations.map((a) => (a as McpForge & { mcp: Mcp }).mcp.name);
   }
+
+  /**
+   * 获取 Forge 关联的 MCP 数量
+   * @param forgeId Forge ID
+   */
+  static async countByForgeId(forgeId: number) {
+    return await McpForge.count({ where: { forgeId } });
+  }
+
+  /**
+   * 获取 Forge 关联的所有 MCP 工具（排除指定的 MCP）
+   * @param forgeId Forge ID
+   * @param excludeMcpId 要排除的 MCP ID
+   * @returns 工具列表
+   */
+  static async getForgeToolsExcludingMcp(
+    forgeId: number,
+    excludeMcpId: number
+  ): Promise<Array<ToolInfo & { mcpId: number }>> {
+    const associations = await McpForge.findAll({
+      where: {
+        forgeId,
+        mcpId: { [Op.ne]: excludeMcpId },
+      },
+      include: [
+        {
+          model: Mcp,
+          as: "mcp",
+          where: { status: "connected" }, // 只返回已连接的 MCP 的工具
+        },
+      ],
+    });
+
+    const tools: Array<ToolInfo & { mcpId: number }> = [];
+    for (const assoc of associations) {
+      for (const tool of assoc.tools) {
+        tools.push({ ...tool, mcpId: assoc.mcpId });
+      }
+    }
+    return tools;
+  }
 }
 
 export default McpForgeDAO;

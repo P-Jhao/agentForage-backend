@@ -57,6 +57,115 @@ interface UpdateForgeParams {
 
 class ForgeService {
   /**
+   * 当 MCP 状态变为不可用时，更新关联 Forge 的摘要
+   * - 如果 Forge 只使用了这一个 MCP，将 summary 设为空
+   * - 如果 Forge 还使用了其他可用的 MCP，重新生成 summary
+   * @param mcpId 状态变更的 MCP ID
+   */
+  static async updateSummariesOnMcpUnavailable(mcpId: number): Promise<void> {
+    try {
+      // 查找所有使用该 MCP 的 Forge
+      const associations = await McpForgeDAO.findByMcpId(mcpId);
+
+      if (associations.length === 0) {
+        console.log(`[ForgeService] MCP ${mcpId} 没有关联的 Forge，无需更新摘要`);
+        return;
+      }
+
+      console.log(
+        `[ForgeService] MCP ${mcpId} 状态变更，需要更新 ${associations.length} 个 Forge 的摘要`
+      );
+
+      const gateway = await loadGateway();
+
+      for (const assoc of associations) {
+        const forgeId = assoc.forgeId;
+
+        try {
+          // 获取该 Forge 排除当前 MCP 后的其他可用工具
+          const remainingTools = await McpForgeDAO.getForgeToolsExcludingMcp(forgeId, mcpId);
+
+          if (remainingTools.length === 0) {
+            // 没有其他可用工具，将 summary 设为空
+            await ForgeDAO.updateSummary(forgeId, "");
+            console.log(`[ForgeService] Forge ${forgeId} 没有其他可用 MCP，摘要已清空`);
+          } else {
+            // 还有其他可用工具，重新生成 summary
+            const tools = remainingTools.map((t) => ({
+              name: t.name,
+              description: t.description || "",
+            }));
+
+            const summary = await gateway.generateForgeSummary({ mcpTools: tools });
+            await ForgeDAO.updateSummary(forgeId, summary);
+            console.log(
+              `[ForgeService] Forge ${forgeId} 摘要已重新生成（基于 ${remainingTools.length} 个工具）`
+            );
+          }
+        } catch (error) {
+          console.error(`[ForgeService] 更新 Forge ${forgeId} 摘要失败:`, (error as Error).message);
+        }
+      }
+    } catch (error) {
+      console.error(`[ForgeService] 处理 MCP ${mcpId} 状态变更时出错:`, (error as Error).message);
+    }
+  }
+
+  /**
+   * 当 MCP 状态变为可用时，更新关联 Forge 的摘要
+   * 重新生成包含该 MCP 工具的摘要
+   * @param mcpId 状态变更的 MCP ID
+   */
+  static async updateSummariesOnMcpAvailable(mcpId: number): Promise<void> {
+    try {
+      // 查找所有使用该 MCP 的 Forge
+      const associations = await McpForgeDAO.findByMcpId(mcpId);
+
+      if (associations.length === 0) {
+        console.log(`[ForgeService] MCP ${mcpId} 没有关联的 Forge，无需更新摘要`);
+        return;
+      }
+
+      console.log(
+        `[ForgeService] MCP ${mcpId} 恢复可用，需要更新 ${associations.length} 个 Forge 的摘要`
+      );
+
+      const gateway = await loadGateway();
+
+      for (const assoc of associations) {
+        const forgeId = assoc.forgeId;
+
+        try {
+          // 获取该 Forge 所有可用的工具（包括刚恢复的 MCP）
+          const allTools = await McpForgeDAO.getForgeTools(forgeId);
+
+          if (allTools.length === 0) {
+            // 没有可用工具（理论上不应该发生）
+            await ForgeDAO.updateSummary(forgeId, "");
+            console.log(`[ForgeService] Forge ${forgeId} 没有可用工具，摘要已清空`);
+          } else {
+            // 重新生成 summary
+            const tools = allTools.map((t) => ({
+              name: t.name,
+              description: t.description || "",
+            }));
+
+            const summary = await gateway.generateForgeSummary({ mcpTools: tools });
+            await ForgeDAO.updateSummary(forgeId, summary);
+            console.log(
+              `[ForgeService] Forge ${forgeId} 摘要已重新生成（基于 ${allTools.length} 个工具）`
+            );
+          }
+        } catch (error) {
+          console.error(`[ForgeService] 更新 Forge ${forgeId} 摘要失败:`, (error as Error).message);
+        }
+      }
+    } catch (error) {
+      console.error(`[ForgeService] 处理 MCP ${mcpId} 状态变更时出错:`, (error as Error).message);
+    }
+  }
+
+  /**
    * 异步生成 Forge 摘要（不阻塞主流程）
    * 在 Forge 创建或更新后调用，后台生成摘要并更新数据库
    * @param forgeId Forge ID

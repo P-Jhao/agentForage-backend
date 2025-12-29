@@ -10,6 +10,11 @@ import { MCPConnectionError } from "./types.js";
 import McpDAO from "../dao/mcpDAO.js";
 import TaskEventService from "../service/taskEventService.js";
 
+// 动态导入 McpService（避免循环依赖）
+const loadMcpService = async () => {
+  return (await import("../service/mcpService.js")).default;
+};
+
 /**
  * MCP 连接管理器
  * 单例模式，管理所有 MCP 客户端实例
@@ -98,7 +103,7 @@ class MCPManager {
 
   /**
    * 处理客户端断开连接
-   * 更新数据库状态、清理客户端实例、推送 SSE 事件
+   * 更新数据库状态、清理客户端实例、推送 SSE 事件、触发摘要更新
    * @param mcpId MCP ID
    */
   private async handleClientDisconnect(mcpId: number): Promise<void> {
@@ -111,9 +116,10 @@ class MCPManager {
     // 从 clients 中移除
     this.clients.delete(mcpId);
 
-    // 更新数据库状态为 disconnected
+    // 通过 McpService 统一更新状态（会触发摘要更新）
     try {
-      await McpDAO.updateStatus(mcpId, "disconnected");
+      const McpService = await loadMcpService();
+      await McpService.updateMcpStatus(mcpId, "disconnected", "connected");
       console.log(`✅ MCP ${mcpId} 状态已更新为 disconnected`);
 
       // 通过 SSE 广播状态变化
