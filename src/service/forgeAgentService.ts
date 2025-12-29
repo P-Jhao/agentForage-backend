@@ -84,10 +84,14 @@ async function toolExecutor(
   toolName: string,
   args: Record<string, unknown>
 ): Promise<string> {
-  console.log(`[ForgeAgentService] 执行工具: ${toolName}, mcpId: ${mcpId}`);
+  console.log(
+    `[ForgeAgentService] 执行工具: ${toolName}, mcpId: ${mcpId}, 参数: ${JSON.stringify(args)}`
+  );
 
   const result = await mcpManager.callTool(mcpId, toolName, args);
-  return formatToolResult(result);
+  const formattedResult = formatToolResult(result);
+  console.log(`[ForgeAgentService] 工具返回原始结果:`, JSON.stringify(result));
+  return formattedResult;
 }
 
 class ForgeAgentService {
