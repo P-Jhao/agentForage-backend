@@ -16,6 +16,7 @@ import cryptoRoutes from "./crypto.js";
 import adminRoutes from "./admin.js";
 import shareRoutes from "./share.js";
 import feedbackRoutes from "./feedback.js";
+import statsRoutes from "./stats.js";
 
 const router = new Router({ prefix: "/api" });
 
@@ -39,5 +40,6 @@ router.use("/intent", intentRoutes.routes());
 router.use("/crypto", cryptoRoutes.routes());
 router.use("/admin", adminRoutes.routes());
 router.use("/share", shareRoutes.routes());
+router.use("/stats", statsRoutes.routes());
 
 export default router;
