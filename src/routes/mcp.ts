@@ -10,7 +10,8 @@ import type { JwtPayload } from "../middleware/tokenAuth.js";
 const router = new Router();
 
 /**
- * 创建 MCP（仅管理员）
+ * 创建 MCP
+ * 管理员可创建所有类型，普通用户只能创建 SSE 和 StreamableHTTP 类型
  * POST /api/mcp
  */
 router.post("/", tokenAuth(), async (ctx) => {

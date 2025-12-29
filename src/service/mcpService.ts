@@ -58,14 +58,17 @@ class McpService {
   }
 
   /**
-   * 创建 MCP（仅管理员）
+   * 创建 MCP
+   * 管理员可创建所有类型，普通用户只能创建 SSE 和 StreamableHTTP 类型
    * 创建后自动尝试连接
    * @param data MCP 数据
    * @param user 当前用户
    */
   static async createMCP(data: Omit<CreateMcpData, "userId">, user: JwtPayload) {
-    // 权限检查
-    this.checkAdminPermission(user);
+    // 权限检查：普通用户只能创建 SSE 和 StreamableHTTP 类型
+    if (user.role !== "root" && data.transportType === "stdio") {
+      throw Object.assign(new Error("普通用户无权创建 stdio 类型的 MCP"), { status: 403 });
+    }
 
     // 创建 MCP
     const mcp = await McpDAO.create({
