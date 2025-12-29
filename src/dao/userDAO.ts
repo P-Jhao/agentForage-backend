@@ -10,6 +10,9 @@ interface CreateUserData {
   username: string;
   nickname: string;
   password: string;
+  role?: "user" | "premium" | "root" | "operator";
+  email?: string | null;
+  adminNote?: string | null;
 }
 
 // 用户资料更新数据

@@ -507,6 +507,106 @@ router.get("/member/list", async (ctx) => {
   };
 });
 
+// 创建成员请求体
+interface CreateMemberRequest {
+  username: string;
+  encryptedPassword: string;
+  role: "user" | "premium";
+  email?: string;
+  adminNote?: string;
+}
+
+/**
+ * 创建成员（管理员）
+ * POST /api/admin/member
+ */
+router.post("/member", async (ctx) => {
+  const { username, encryptedPassword, role, email, adminNote } = ctx.request
+    .body as CreateMemberRequest;
+
+  // 验证必填字段
+  if (!username || !encryptedPassword || !role) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "用户名、密码和角色为必填项" };
+    return;
+  }
+
+  // 验证账号格式：只允许英文字母和数字
+  if (!/^[a-zA-Z0-9]+$/.test(username)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "账号只能包含英文字母和数字" };
+    return;
+  }
+
+  if (username.length < 3 || username.length > 20) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "账号长度需在 3-20 字符之间" };
+    return;
+  }
+
+  // 不允许创建 operator 或 root 角色（类型已限制，这里做运行时检查）
+  if (!["user", "premium"].includes(role)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "不能创建管理员或运营员账号" };
+    return;
+  }
+
+  // 检查用户名是否已存在
+  const existing = await UserDAO.findByUsername(username);
+  if (existing) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "用户名已存在" };
+    return;
+  }
+
+  // 验证邮箱格式（如果提供）
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "邮箱格式不正确" };
+    return;
+  }
+
+  try {
+    // 解密密码
+    const password = CryptoService.rsaDecrypt(encryptedPassword);
+
+    // 验证密码格式
+    if (!/^[a-zA-Z0-9]+$/.test(password)) {
+      ctx.status = 400;
+      ctx.body = { code: 400, message: "密码只能包含英文字母和数字" };
+      return;
+    }
+
+    if (password.length < 6 || password.length > 32) {
+      ctx.status = 400;
+      ctx.body = { code: 400, message: "密码长度需在 6-32 字符之间" };
+      return;
+    }
+
+    // 加密密码
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 创建用户
+    const user = await UserDAO.create({
+      username,
+      nickname: username,
+      password: hashedPassword,
+      role,
+      email: email || null,
+      adminNote: adminNote || null,
+    });
+
+    ctx.body = {
+      code: 200,
+      message: "创建成功",
+      data: { id: user.id, username: user.username },
+    };
+  } catch {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "密码解密失败，请重试" };
+  }
+});
+
 // 更新成员请求体
 interface UpdateMemberRequest {
   username?: string;
