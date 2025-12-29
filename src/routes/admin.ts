@@ -893,6 +893,212 @@ router.delete("/featured/:taskUuid", async (ctx) => {
   ctx.body = { code: 200, message: "ok" };
 });
 
+// ==================== MCP 管理 ====================
+
+// MCP 列表请求参数
+interface AdminMcpListQuery {
+  page?: string;
+  pageSize?: string;
+  keyword?: string;
+  status?: "all" | "connected" | "disconnected" | "closed";
+  source?: "all" | "builtin" | "user";
+}
+
+/**
+ * 获取 MCP 列表（管理员）
+ * GET /api/admin/mcp/list
+ */
+router.get("/mcp/list", async (ctx) => {
+  const {
+    page = "1",
+    pageSize = "10",
+    keyword,
+    status = "all",
+    source = "all",
+  } = ctx.query as AdminMcpListQuery;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+  const offset = (pageNum - 1) * pageSizeNum;
+
+  // 构建查询条件
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = {};
+
+  // 状态筛选
+  if (status !== "all") {
+    where.status = status;
+  }
+
+  // 来源筛选
+  if (source !== "all") {
+    where.source = source;
+  }
+
+  // 关键词搜索（MCP 名称或创建者名称）
+  if (keyword) {
+    where[Op.or] = [
+      { name: { [Op.like]: `%${keyword}%` } },
+      { description: { [Op.like]: `%${keyword}%` } },
+      { "$user.username$": { [Op.like]: `%${keyword}%` } },
+      { "$user.nickname$": { [Op.like]: `%${keyword}%` } },
+    ];
+  }
+
+  // 查询 MCP 列表（包含创建者信息）
+  const { count, rows: mcps } = await Mcp.findAndCountAll({
+    where,
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["id", "username", "nickname"],
+        required: true,
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+    limit: pageSizeNum,
+    offset,
+    subQuery: false,
+  });
+
+  // 定义关联数据类型
+  type McpWithRelations = (typeof mcps)[0] & {
+    user: { id: number; username: string; nickname: string | null };
+  };
+
+  // 构建响应数据
+  const mcpList = mcps.map((mcp) => {
+    const m = mcp as unknown as McpWithRelations;
+    return {
+      id: mcp.id,
+      name: mcp.name,
+      description: mcp.description,
+      transportType: mcp.transportType,
+      command: mcp.command,
+      args: mcp.args,
+      env: mcp.env,
+      url: mcp.url,
+      source: mcp.source,
+      isPublic: mcp.isPublic,
+      timeout: mcp.timeout,
+      status: mcp.status,
+      remarks: mcp.remarks,
+      creator: {
+        id: m.user.id,
+        username: m.user.username,
+        nickname: m.user.nickname,
+      },
+      createdAt: mcp.createdAt.toISOString(),
+    };
+  });
+
+  ctx.body = {
+    code: 200,
+    message: "ok",
+    data: {
+      mcps: mcpList,
+      pagination: {
+        total: count,
+        page: pageNum,
+        pageSize: pageSizeNum,
+      },
+    },
+  };
+});
+
+// 更新 MCP 请求体
+interface UpdateAdminMcpRequest {
+  name?: string;
+  description?: string | null;
+  transportType?: "stdio" | "sse" | "streamableHttp";
+  command?: string | null;
+  args?: string | null;
+  env?: string | null;
+  url?: string | null;
+  isPublic?: boolean;
+  timeout?: number | null;
+  remarks?: string | null;
+  status?: "connected" | "disconnected" | "closed";
+}
+
+/**
+ * 更新 MCP（管理员）
+ * PUT /api/admin/mcp/:id
+ */
+router.put("/mcp/:id", async (ctx) => {
+  const { id } = ctx.params;
+  const mcpId = parseInt(id, 10);
+
+  if (isNaN(mcpId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的 MCP ID" };
+    return;
+  }
+
+  // 检查 MCP 是否存在
+  const mcp = await Mcp.findByPk(mcpId);
+  if (!mcp) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "MCP 不存在" };
+    return;
+  }
+
+  const body = ctx.request.body as UpdateAdminMcpRequest;
+
+  // 构建更新数据
+  const updateData: Partial<UpdateAdminMcpRequest> = {};
+  if (body.name !== undefined) updateData.name = body.name;
+  if (body.description !== undefined) updateData.description = body.description;
+  if (body.transportType !== undefined) updateData.transportType = body.transportType;
+  if (body.command !== undefined) updateData.command = body.command;
+  if (body.args !== undefined) updateData.args = body.args;
+  if (body.env !== undefined) updateData.env = body.env;
+  if (body.url !== undefined) updateData.url = body.url;
+  if (body.isPublic !== undefined) updateData.isPublic = body.isPublic;
+  if (body.timeout !== undefined) updateData.timeout = body.timeout;
+  if (body.remarks !== undefined) updateData.remarks = body.remarks;
+  if (body.status !== undefined) updateData.status = body.status;
+
+  if (Object.keys(updateData).length === 0) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "没有需要更新的内容" };
+    return;
+  }
+
+  await Mcp.update(updateData, { where: { id: mcpId } });
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
+/**
+ * 删除 MCP（管理员，硬删除）
+ * DELETE /api/admin/mcp/:id
+ */
+router.delete("/mcp/:id", async (ctx) => {
+  const { id } = ctx.params;
+  const mcpId = parseInt(id, 10);
+
+  if (isNaN(mcpId)) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "无效的 MCP ID" };
+    return;
+  }
+
+  // 检查 MCP 是否存在
+  const mcp = await Mcp.findByPk(mcpId);
+  if (!mcp) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "MCP 不存在" };
+    return;
+  }
+
+  // 硬删除
+  await Mcp.destroy({ where: { id: mcpId } });
+
+  ctx.body = { code: 200, message: "ok" };
+});
+
 // ==================== 数据统计 ====================
 
 // 统计查询参数

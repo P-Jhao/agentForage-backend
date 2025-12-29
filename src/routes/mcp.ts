@@ -197,8 +197,11 @@ router.get("/:id/detail", tokenAuth(), async (ctx) => {
     return;
   }
 
+  // 判断是否为管理员（operator 或 root）
+  const isAdmin = user.role === "operator" || user.role === "root";
+
   try {
-    const detail = await McpService.getMCPDetail(id, user.id);
+    const detail = await McpService.getMCPDetail(id, user.id, isAdmin);
     ctx.body = { code: 200, message: "ok", data: detail };
   } catch (error) {
     const err = error as Error & { status?: number };

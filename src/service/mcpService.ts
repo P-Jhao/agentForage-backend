@@ -132,7 +132,11 @@ class McpService {
    * @param id MCP ID
    * @param userId 当前用户 ID
    */
-  static async getMCPDetail(id: number, userId: number): Promise<McpDetailResult> {
+  static async getMCPDetail(
+    id: number,
+    userId: number,
+    isAdmin: boolean = false
+  ): Promise<McpDetailResult> {
     const mcp = await McpDAO.findById(id);
     if (!mcp) {
       throw Object.assign(new Error("MCP 不存在"), { status: 404 });
@@ -188,16 +192,19 @@ class McpService {
     }
 
     const mcpData = mcp.toJSON();
+
+    // 非管理员用户隐藏敏感信息（启动命令、参数、环境变量、URL、请求头）
     return {
       id: mcpData.id,
       name: mcpData.name,
       description: mcpData.description,
       transportType: mcpData.transportType,
-      command: mcpData.command,
-      args: mcpData.args,
-      env: mcpData.env,
-      url: mcpData.url,
-      headers: mcpData.headers,
+      // 敏感字段：仅管理员可见
+      command: isAdmin ? mcpData.command : null,
+      args: isAdmin ? mcpData.args : null,
+      env: isAdmin ? mcpData.env : null,
+      url: isAdmin ? mcpData.url : null,
+      headers: isAdmin ? mcpData.headers : null,
       userId: mcpData.userId,
       source: mcpData.source,
       isPublic: mcpData.isPublic,
