@@ -7,3 +7,7 @@ dist/
 
 # 用户上传的文件（运行时生成）
 public/uploads/
+
+# MCP 输出文件（运行时生成）
+public/mcp-outputs/*
+!public/mcp-outputs/.gitkeep

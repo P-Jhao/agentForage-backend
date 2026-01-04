@@ -17,7 +17,7 @@ import TaskDAO from "../dao/taskDAO.js";
 import UserDAO from "../dao/userDAO.js";
 import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
-import { deleteFiles } from "../utils/fileCleanup.js";
+import { sessionFileManager } from "../service/sessionFileManager.js";
 import type { TurnEndData, TokenUsage } from "../types/turnEnd.js";
 
 const router = new Router();
@@ -707,6 +707,14 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
         })) || [];
       const builtinContext = fileInfos.length > 0 ? { files: fileInfos } : undefined;
 
+      // 注册文件到会话文件管理器（支持跨对话访问）
+      if (fileInfos.length > 0) {
+        sessionFileManager.registerFiles(
+          uuid,
+          fileInfos.map((f) => ({ originalName: f.originalName, realPath: f.path }))
+        );
+      }
+
       // 从数据库读取用户的自定义模型配置
       const userModelConfig = await UserDAO.getModelConfig(userId);
       // 转换为 Gateway 需要的格式（仅当 mode 为 custom 时传递）
@@ -947,13 +955,8 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
       // 清理中断状态
       TaskAbortService.cleanup(uuid);
 
-      // 清理用户上传的临时文件（LLM 已解析完成，不再需要）
-      if (files && files.length > 0) {
-        const filePaths = files.map((f) => f.filePath);
-        deleteFiles(filePaths).catch((error) => {
-          console.error("[task.ts] 清理上传文件失败:", error);
-        });
-      }
+      // 刷新会话文件访问时间（延长文件保留时间，支持后续对话继续访问）
+      sessionFileManager.refreshAccessTime(uuid);
 
       // LLM 回复完成后，异步检查并触发消息总结（不阻塞主流程）
       MessageSummaryService.checkAndTriggerSummary(task.id).catch((error) => {

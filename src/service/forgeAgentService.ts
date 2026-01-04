@@ -125,34 +125,100 @@ export function clearMcpPathConfigCache(mcpId?: number): void {
 }
 
 /**
- * 工具执行器
+ * 创建工具执行器
  * 通过 mcpManager 调用 MCP Server 执行工具
- * 自动处理输出路径参数
+ * 自动处理输入/输出路径参数
+ * 如果有输出文件，自动读取文件内容
+ * @param taskId 任务/会话 ID（用于查找会话文件映射）
  */
-async function toolExecutor(
-  mcpId: number,
-  toolName: string,
-  args: Record<string, unknown>
-): Promise<string> {
-  console.log(
-    `[ForgeAgentService] 执行工具: ${toolName}, mcpId: ${mcpId}, 参数: ${JSON.stringify(args)}`
-  );
+function createToolExecutor(taskId?: string) {
+  return async function toolExecutor(
+    mcpId: number,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<string> {
+    console.log(
+      `[ForgeAgentService] 执行工具: ${toolName}, mcpId: ${mcpId}, 参数: ${JSON.stringify(args)}`
+    );
 
-  // 获取 MCP 的路径配置
-  const pathConfig = await getMcpPathConfig(mcpId);
+    // 获取 MCP 的路径配置
+    const pathConfig = await getMcpPathConfig(mcpId);
 
-  // 处理路径参数
-  const { processedArgs, outputFiles } = await processToolArgs(mcpId, toolName, args, pathConfig);
+    // 处理路径参数（传入 taskId 用于 input 类型参数的映射）
+    const { processedArgs, outputFiles } = await processToolArgs(
+      mcpId,
+      toolName,
+      args,
+      pathConfig,
+      taskId
+    );
 
-  // 如果参数被修改，打印日志
-  if (outputFiles.length > 0) {
-    console.log(`[ForgeAgentService] 处理后的参数: ${JSON.stringify(processedArgs)}`);
+    // 如果参数被修改，打印日志
+    if (outputFiles.length > 0 || JSON.stringify(args) !== JSON.stringify(processedArgs)) {
+      console.log(`[ForgeAgentService] 处理后的参数: ${JSON.stringify(processedArgs)}`);
+    }
+
+    const result = await mcpManager.callTool(mcpId, toolName, processedArgs);
+    let formattedResult = formatToolResult(result, outputFiles);
+    console.log(`[ForgeAgentService] 工具返回原始结果:`, JSON.stringify(result));
+
+    // 如果有输出文件，自动读取文件内容
+    if (outputFiles.length > 0 && !result.isError) {
+      console.log(`[ForgeAgentService] 检测到输出文件，自动读取内容...`);
+      const fileContents = await readOutputFiles(outputFiles);
+      if (fileContents) {
+        formattedResult += `\n\n--- 输出文件内容 ---\n${fileContents}`;
+      }
+    }
+
+    return formattedResult;
+  };
+}
+
+/**
+ * 读取输出文件内容
+ * 根据文件扩展名选择合适的内置 MCP 工具读取文件
+ * @param filePaths 文件路径列表
+ * @returns 文件内容（合并后的字符串）
+ */
+async function readOutputFiles(filePaths: string[]): Promise<string | null> {
+  try {
+    const { builtinMcpRegistry, FILE_TOOL_MAP } = await loadGateway();
+    const path = await import("path");
+    const contents: string[] = [];
+
+    for (const filePath of filePaths) {
+      try {
+        // 根据文件扩展名获取对应的工具
+        const ext = path.extname(filePath).toLowerCase();
+        const toolInfo = FILE_TOOL_MAP[ext];
+
+        if (!toolInfo) {
+          console.warn(`[ForgeAgentService] 不支持的文件类型: ${ext}，跳过读取: ${filePath}`);
+          continue;
+        }
+
+        console.log(
+          `[ForgeAgentService] 读取输出文件: ${filePath}，使用工具: ${toolInfo.mcpName}/${toolInfo.toolName}`
+        );
+
+        const content = await builtinMcpRegistry.callTool(toolInfo.mcpName, toolInfo.toolName, {
+          filePath,
+        });
+
+        if (content) {
+          contents.push(content);
+        }
+      } catch (err) {
+        console.error(`[ForgeAgentService] 读取文件失败: ${filePath}`, err);
+      }
+    }
+
+    return contents.length > 0 ? contents.join("\n\n") : null;
+  } catch (err) {
+    console.error(`[ForgeAgentService] 加载 Gateway 失败:`, err);
+    return null;
   }
-
-  const result = await mcpManager.callTool(mcpId, toolName, processedArgs);
-  const formattedResult = formatToolResult(result, outputFiles);
-  console.log(`[ForgeAgentService] 工具返回原始结果:`, JSON.stringify(result));
-  return formattedResult;
 }
 
 class ForgeAgentService {
@@ -223,6 +289,9 @@ class ForgeAgentService {
     // 加载 Gateway 并调用 forgeAgentStream
     const { forgeAgentStream } = await loadGateway();
 
+    // 创建工具执行器（传入 taskId 用于 input 类型参数的映射）
+    const toolExecutor = createToolExecutor(taskId);
+
     // 调用 Gateway 的流式函数
     yield* forgeAgentStream({
       model,
@@ -275,6 +344,9 @@ class ForgeAgentService {
 
     // 加载 Gateway 并调用 forgeAgentInvoke
     const { forgeAgentInvoke } = await loadGateway();
+
+    // 创建工具执行器（invoke 方法没有 taskId，不支持 input 类型参数映射）
+    const toolExecutor = createToolExecutor();
 
     // 调用 Gateway 的同步函数
     return await forgeAgentInvoke({

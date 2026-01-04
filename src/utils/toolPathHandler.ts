@@ -5,6 +5,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import { sessionFileManager } from "../service/sessionFileManager.js";
 
 // 获取当前文件目录
 const __filename = fileURLToPath(import.meta.url);
@@ -56,18 +57,20 @@ export function generateOutputPath(mcpId: number, toolName: string, originalPath
 
 /**
  * 处理工具参数中的路径
- * 根据 toolPathConfig 配置，自动替换输出路径参数
+ * 根据 toolPathConfig 配置，自动替换输入/输出路径参数
  * @param mcpId MCP ID
  * @param toolName 工具名称
  * @param args 原始参数
  * @param toolPathConfig 工具路径配置
+ * @param taskId 任务/会话 ID（用于查找会话文件映射）
  * @returns 处理后的参数和生成的输出文件路径列表
  */
 export async function processToolArgs(
   mcpId: number,
   toolName: string,
   args: Record<string, unknown>,
-  toolPathConfig: ToolPathConfig | null
+  toolPathConfig: ToolPathConfig | null,
+  taskId?: string
 ): Promise<{
   processedArgs: Record<string, unknown>;
   outputFiles: string[];
@@ -85,20 +88,30 @@ export async function processToolArgs(
 
   const toolConfig = toolPathConfig[toolName];
 
-  // 遍历配置，处理标记为 output 的参数
+  // 遍历配置，处理标记为 output 或 input 的参数
   for (const [paramName, pathType] of Object.entries(toolConfig)) {
     if (pathType === "output") {
-      // 获取 LLM 传入的原始值（用于提取扩展名）
+      // 输出路径：生成服务器路径
       const originalValue = args[paramName] as string | undefined;
-      // 生成新的输出路径
       const outputPath = generateOutputPath(mcpId, toolName, originalValue);
       processedArgs[paramName] = outputPath;
       outputFiles.push(outputPath);
       console.log(
         `[ToolPathHandler] 替换输出路径参数 ${paramName}: ${originalValue} -> ${outputPath}`
       );
+    } else if (pathType === "input" && taskId) {
+      // 输入路径：从会话文件映射中查找真实路径
+      const llmPath = args[paramName] as string | undefined;
+      if (llmPath) {
+        const realPath = sessionFileManager.resolveFilePath(taskId, llmPath);
+        if (realPath) {
+          processedArgs[paramName] = realPath;
+          console.log(`[ToolPathHandler] 替换输入路径参数 ${paramName}: ${llmPath} -> ${realPath}`);
+        } else {
+          console.warn(`[ToolPathHandler] 无法解析输入路径参数 ${paramName}: ${llmPath}，保持原值`);
+        }
+      }
     }
-    // TODO: 未来处理 input 类型
   }
 
   return { processedArgs, outputFiles };
