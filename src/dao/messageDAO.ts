@@ -373,6 +373,32 @@ class MessageDAO {
 
     return null;
   }
+
+  /**
+   * 根据 callId 查找工具执行结果
+   * 用于下载工具执行结果
+   * @param callId 工具调用 ID
+   * @returns 工具执行结果信息，如果不存在返回 null
+   */
+  static async findToolResultByCallId(
+    callId: string
+  ): Promise<{ toolName: string; summarizedResult?: string } | null> {
+    const message = await Message.findOne({
+      where: {
+        type: "tool_call",
+        callId,
+      },
+    });
+
+    if (!message) {
+      return null;
+    }
+
+    return {
+      toolName: message.toolName || "unknown",
+      summarizedResult: message.result || undefined,
+    };
+  }
 }
 
 export default MessageDAO;

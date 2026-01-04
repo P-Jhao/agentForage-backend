@@ -46,6 +46,41 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
+ * 下载工具执行结果
+ * GET /api/files/tool-result/:callId
+ *
+ * 将工具执行结果的 Markdown 内容作为文件下载
+ */
+router.get("/tool-result/:callId", async (ctx) => {
+  const { callId } = ctx.params;
+
+  if (!callId) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: "缺少 callId 参数" };
+    return;
+  }
+
+  // 从数据库获取工具执行结果
+  const toolResult = await MessageDAO.findToolResultByCallId(callId);
+
+  if (!toolResult) {
+    ctx.status = 404;
+    ctx.body = { code: 404, message: "工具执行结果不存在" };
+    return;
+  }
+
+  // 生成文件名：工具名_callId.md
+  const filename = `${toolResult.toolName}_${callId}.md`;
+  const content = Buffer.from(toolResult.summarizedResult || "无执行结果", "utf-8");
+
+  ctx.set("Content-Type", "text/markdown; charset=utf-8");
+  ctx.set("Content-Length", content.length.toString());
+  ctx.set("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+  ctx.set("Cache-Control", "no-cache");
+  ctx.body = content;
+});
+
+/**
  * 下载 MCP 输出文件
  * GET /api/files/mcp-outputs/:filename
  *
