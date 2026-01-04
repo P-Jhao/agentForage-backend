@@ -332,6 +332,47 @@ class MessageDAO {
       return null;
     }
   }
+
+  /**
+   * 根据文件名查找输出文件信息
+   * 用于下载时从数据库获取文件内容（小文件）
+   * @param filename 文件名
+   * @returns 包含 previewContent 的文件信息，如果不存在返回 null
+   */
+  static async findOutputFileByName(filename: string): Promise<{ previewContent?: string } | null> {
+    const { Op } = await import("sequelize");
+
+    // 在所有 tool_call 类型的消息中搜索 outputFiles
+    const messages = await Message.findAll({
+      where: {
+        type: "tool_call",
+        outputFiles: {
+          [Op.ne]: null,
+        },
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    for (const msg of messages) {
+      if (!msg.outputFiles) continue;
+
+      try {
+        const outputFiles = JSON.parse(msg.outputFiles) as Array<{
+          name: string;
+          previewContent?: string;
+        }>;
+
+        const file = outputFiles.find((f) => f.name === filename);
+        if (file) {
+          return { previewContent: file.previewContent };
+        }
+      } catch {
+        console.error(`[MessageDAO] 解析 outputFiles 失败: ${msg.outputFiles}`);
+      }
+    }
+
+    return null;
+  }
 }
 
 export default MessageDAO;

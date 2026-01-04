@@ -1,16 +1,49 @@
 /**
  * 文件下载路由
  * 提供 MCP 工具输出文件的下载功能
+ *
+ * 下载策略：
+ * - 小文件（≤1MB）：从数据库 previewContent 读取，内存流返回
+ * - 大文件（>1MB）：从磁盘文件读取
  */
 import Router from "@koa/router";
 import path from "path";
-import fs from "fs/promises";
 import { createReadStream, existsSync } from "fs";
+import fs from "fs/promises";
+import MessageDAO from "../dao/messageDAO.js";
 
 const router = new Router();
 
-// 允许下载的目录（相对于 public 目录）
-const ALLOWED_DIRS = ["mcp-outputs"];
+// MIME 类型映射
+const MIME_TYPES: Record<string, string> = {
+  ".txt": "text/plain; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".ts": "application/typescript; charset=utf-8",
+  ".py": "text/x-python; charset=utf-8",
+  ".java": "text/x-java; charset=utf-8",
+  ".c": "text/x-c; charset=utf-8",
+  ".cpp": "text/x-c++; charset=utf-8",
+  ".h": "text/x-c; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".sql": "application/sql; charset=utf-8",
+  ".yaml": "application/x-yaml; charset=utf-8",
+  ".yml": "application/x-yaml; charset=utf-8",
+  ".log": "text/plain; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".zip": "application/zip",
+  ".tar": "application/x-tar",
+  ".gz": "application/gzip",
+};
 
 /**
  * 下载 MCP 输出文件
@@ -30,7 +63,26 @@ router.get("/mcp-outputs/:filename", async (ctx) => {
     return;
   }
 
-  // 构建文件路径
+  const ext = path.extname(filename).toLowerCase();
+  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+
+  // 首先尝试从数据库查找文件内容（小文件）
+  const fileInfo = await MessageDAO.findOutputFileByName(filename);
+
+  if (fileInfo?.previewContent) {
+    // 小文件：从数据库读取，内存流返回
+    console.log(`[files.ts] 从数据库读取文件: ${filename}`);
+    const content = Buffer.from(fileInfo.previewContent, "utf-8");
+
+    ctx.set("Content-Type", contentType);
+    ctx.set("Content-Length", content.length.toString());
+    ctx.set("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    ctx.set("Cache-Control", "no-cache");
+    ctx.body = content;
+    return;
+  }
+
+  // 大文件或数据库中没有：从磁盘读取
   const publicDir = path.resolve(process.cwd(), "public");
   const filePath = path.join(publicDir, "mcp-outputs", filename);
 
@@ -46,55 +98,18 @@ router.get("/mcp-outputs/:filename", async (ctx) => {
   // 检查文件是否存在
   if (!existsSync(filePath)) {
     ctx.status = 404;
-    ctx.body = { code: 404, message: "文件不存在" };
+    ctx.body = { code: 404, message: "文件不存在或已过期" };
     return;
   }
 
   try {
-    // 获取文件信息
+    console.log(`[files.ts] 从磁盘读取文件: ${filePath}`);
     const stats = await fs.stat(filePath);
 
-    // 设置响应头
-    const ext = path.extname(filename).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      ".txt": "text/plain; charset=utf-8",
-      ".json": "application/json; charset=utf-8",
-      ".md": "text/markdown; charset=utf-8",
-      ".csv": "text/csv; charset=utf-8",
-      ".xml": "application/xml; charset=utf-8",
-      ".html": "text/html; charset=utf-8",
-      ".js": "application/javascript; charset=utf-8",
-      ".ts": "application/typescript; charset=utf-8",
-      ".py": "text/x-python; charset=utf-8",
-      ".java": "text/x-java; charset=utf-8",
-      ".c": "text/x-c; charset=utf-8",
-      ".cpp": "text/x-c++; charset=utf-8",
-      ".h": "text/x-c; charset=utf-8",
-      ".css": "text/css; charset=utf-8",
-      ".sql": "application/sql; charset=utf-8",
-      ".yaml": "application/x-yaml; charset=utf-8",
-      ".yml": "application/x-yaml; charset=utf-8",
-      ".log": "text/plain; charset=utf-8",
-      ".pdf": "application/pdf",
-      ".png": "image/png",
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".gif": "image/gif",
-      ".svg": "image/svg+xml",
-      ".zip": "application/zip",
-      ".tar": "application/x-tar",
-      ".gz": "application/gzip",
-    };
-
-    const contentType = mimeTypes[ext] || "application/octet-stream";
-
-    // 设置下载响应头
     ctx.set("Content-Type", contentType);
     ctx.set("Content-Length", stats.size.toString());
     ctx.set("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     ctx.set("Cache-Control", "no-cache");
-
-    // 返回文件流
     ctx.body = createReadStream(filePath);
   } catch (error) {
     console.error("[files.ts] 文件下载失败:", error);

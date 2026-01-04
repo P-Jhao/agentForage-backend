@@ -191,6 +191,12 @@ function createToolExecutor(taskId?: string) {
 }
 
 /**
+ * 预览内容的最大文件大小（1MB）
+ * 超过此大小的文件不存储预览内容，只保留磁盘文件供下载
+ */
+const MAX_PREVIEW_FILE_SIZE = 1 * 1024 * 1024; // 1MB
+
+/**
  * 构建输出文件信息
  * 读取文件元信息，尝试读取预览内容
  * @param filePath 文件路径
@@ -208,7 +214,21 @@ async function buildOutputFileInfo(filePath: string): Promise<OutputFileInfo | n
     // 生成下载 URL
     const url = `/api/files/mcp-outputs/${fileName}`;
 
-    // 尝试读取预览内容
+    // 检查文件大小是否超过预览限制
+    if (stats.size > MAX_PREVIEW_FILE_SIZE) {
+      console.log(
+        `[ForgeAgentService] 文件过大，跳过预览: ${filePath}（${(stats.size / 1024 / 1024).toFixed(2)}MB > ${MAX_PREVIEW_FILE_SIZE / 1024 / 1024}MB）`
+      );
+      return {
+        path: filePath,
+        name: fileName,
+        size: stats.size,
+        url,
+        // 大文件不存储预览内容，保留磁盘文件供下载
+      };
+    }
+
+    // 尝试读取预览内容（小文件）
     let previewContent: string | undefined;
     const toolInfo = FILE_TOOL_MAP[ext];
 
@@ -222,6 +242,13 @@ async function buildOutputFileInfo(filePath: string): Promise<OutputFileInfo | n
         });
         if (content) {
           previewContent = content;
+          // 小文件读取成功后，可以删除磁盘文件（内容已存入数据库）
+          try {
+            await fs.unlink(filePath);
+            console.log(`[ForgeAgentService] 已删除小文件（内容已存入数据库）: ${filePath}`);
+          } catch (unlinkErr) {
+            console.warn(`[ForgeAgentService] 删除文件失败: ${filePath}`, unlinkErr);
+          }
         }
       } catch (err) {
         console.error(`[ForgeAgentService] 读取文件预览失败: ${filePath}`, err);
