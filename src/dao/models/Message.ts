@@ -81,11 +81,21 @@ interface MessageAttributes {
   files: string | null;
   // 中断标记（消息是否因用户中断而不完整）
   aborted: boolean | null;
+  // 工具输出文件信息（JSON 字符串）
+  outputFiles: string | null;
 }
 
 type MessageCreationAttributes = Optional<
   MessageAttributes,
-  "id" | "callId" | "toolName" | "arguments" | "result" | "success" | "files" | "aborted"
+  | "id"
+  | "callId"
+  | "toolName"
+  | "arguments"
+  | "result"
+  | "success"
+  | "files"
+  | "aborted"
+  | "outputFiles"
 >;
 
 class Message
@@ -104,6 +114,7 @@ class Message
   declare success: boolean | null;
   declare files: string | null;
   declare aborted: boolean | null;
+  declare outputFiles: string | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -206,6 +217,11 @@ Message.init(
       allowNull: true,
       defaultValue: false,
       comment: "消息是否因用户中断而不完整",
+    },
+    outputFiles: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "工具输出文件信息 JSON（tool_call 类型使用）",
     },
   },
   {

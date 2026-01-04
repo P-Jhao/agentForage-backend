@@ -7,8 +7,10 @@ import ForgeDAO from "../dao/forgeDAO.js";
 import McpDAO from "../dao/mcpDAO.js";
 import { mcpManager } from "../mcp/index.js";
 import type { MCPToolCallResult } from "../mcp/types.js";
-import type { CustomModelConfig } from "agentforge-gateway";
+import type { CustomModelConfig, OutputFileInfo, ToolExecutorResult } from "agentforge-gateway";
 import { processToolArgs, type ToolPathConfig } from "../utils/toolPathHandler.js";
+import fs from "fs/promises";
+import path from "path";
 
 // 动态导入 gateway
 const loadGateway = async () => {
@@ -59,8 +61,8 @@ export interface BuiltinContext {
   [key: string]: unknown;
 }
 
-// 重新导出 CustomModelConfig 供外部使用
-export type { CustomModelConfig };
+// 重新导出类型供外部使用
+export type { CustomModelConfig, OutputFileInfo, ToolExecutorResult };
 
 /**
  * 将 MCP 工具调用结果转换为字符串
@@ -128,7 +130,7 @@ export function clearMcpPathConfigCache(mcpId?: number): void {
  * 创建工具执行器
  * 通过 mcpManager 调用 MCP Server 执行工具
  * 自动处理输入/输出路径参数
- * 如果有输出文件，自动读取文件内容
+ * 如果有输出文件，自动读取文件内容并构建文件信息
  * @param taskId 任务/会话 ID（用于查找会话文件映射）
  */
 function createToolExecutor(taskId?: string) {
@@ -136,7 +138,7 @@ function createToolExecutor(taskId?: string) {
     mcpId: number,
     toolName: string,
     args: Record<string, unknown>
-  ): Promise<string> {
+  ): Promise<ToolExecutorResult> {
     console.log(
       `[ForgeAgentService] 执行工具: ${toolName}, mcpId: ${mcpId}, 参数: ${JSON.stringify(args)}`
     );
@@ -162,61 +164,81 @@ function createToolExecutor(taskId?: string) {
     let formattedResult = formatToolResult(result, outputFiles);
     console.log(`[ForgeAgentService] 工具返回原始结果:`, JSON.stringify(result));
 
-    // 如果有输出文件，自动读取文件内容
+    // 构建输出文件信息列表
+    const outputFileInfos: OutputFileInfo[] = [];
+
+    // 如果有输出文件，自动读取文件内容并构建文件信息
     if (outputFiles.length > 0 && !result.isError) {
-      console.log(`[ForgeAgentService] 检测到输出文件，自动读取内容...`);
-      const fileContents = await readOutputFiles(outputFiles);
-      if (fileContents) {
-        formattedResult += `\n\n--- 输出文件内容 ---\n${fileContents}`;
+      console.log(`[ForgeAgentService] 检测到输出文件，构建文件信息...`);
+
+      for (const filePath of outputFiles) {
+        const fileInfo = await buildOutputFileInfo(filePath);
+        if (fileInfo) {
+          outputFileInfos.push(fileInfo);
+          // 如果有预览内容，附加到结果中（供 LLM 使用）
+          if (fileInfo.previewContent) {
+            formattedResult += `\n\n--- 输出文件内容 (${fileInfo.name}) ---\n${fileInfo.previewContent}`;
+          }
+        }
       }
     }
 
-    return formattedResult;
+    return {
+      result: formattedResult,
+      outputFiles: outputFileInfos.length > 0 ? outputFileInfos : undefined,
+    };
   };
 }
 
 /**
- * 读取输出文件内容
- * 根据文件扩展名选择合适的内置 MCP 工具读取文件
- * @param filePaths 文件路径列表
- * @returns 文件内容（合并后的字符串）
+ * 构建输出文件信息
+ * 读取文件元信息，尝试读取预览内容
+ * @param filePath 文件路径
+ * @returns 输出文件信息，如果文件不存在返回 null
  */
-async function readOutputFiles(filePaths: string[]): Promise<string | null> {
+async function buildOutputFileInfo(filePath: string): Promise<OutputFileInfo | null> {
   try {
     const { builtinMcpRegistry, FILE_TOOL_MAP } = await loadGateway();
-    const path = await import("path");
-    const contents: string[] = [];
 
-    for (const filePath of filePaths) {
+    // 获取文件信息
+    const stats = await fs.stat(filePath);
+    const fileName = path.basename(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+
+    // 生成下载 URL
+    const url = `/api/files/mcp-outputs/${fileName}`;
+
+    // 尝试读取预览内容
+    let previewContent: string | undefined;
+    const toolInfo = FILE_TOOL_MAP[ext];
+
+    if (toolInfo) {
       try {
-        // 根据文件扩展名获取对应的工具
-        const ext = path.extname(filePath).toLowerCase();
-        const toolInfo = FILE_TOOL_MAP[ext];
-
-        if (!toolInfo) {
-          console.warn(`[ForgeAgentService] 不支持的文件类型: ${ext}，跳过读取: ${filePath}`);
-          continue;
-        }
-
         console.log(
-          `[ForgeAgentService] 读取输出文件: ${filePath}，使用工具: ${toolInfo.mcpName}/${toolInfo.toolName}`
+          `[ForgeAgentService] 读取输出文件预览: ${filePath}，使用工具: ${toolInfo.mcpName}/${toolInfo.toolName}`
         );
-
         const content = await builtinMcpRegistry.callTool(toolInfo.mcpName, toolInfo.toolName, {
           filePath,
         });
-
         if (content) {
-          contents.push(content);
+          previewContent = content;
         }
       } catch (err) {
-        console.error(`[ForgeAgentService] 读取文件失败: ${filePath}`, err);
+        console.error(`[ForgeAgentService] 读取文件预览失败: ${filePath}`, err);
       }
+    } else {
+      console.log(`[ForgeAgentService] 文件类型不支持预览: ${ext}`);
     }
 
-    return contents.length > 0 ? contents.join("\n\n") : null;
+    return {
+      path: filePath,
+      name: fileName,
+      size: stats.size,
+      url,
+      previewContent,
+    };
   } catch (err) {
-    console.error(`[ForgeAgentService] 加载 Gateway 失败:`, err);
+    console.error(`[ForgeAgentService] 构建文件信息失败: ${filePath}`, err);
     return null;
   }
 }

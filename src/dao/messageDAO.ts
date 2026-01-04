@@ -39,6 +39,13 @@ interface UpdateToolCallResultData {
   success: boolean;
   summarizedResult?: string; // Markdown 格式摘要
   error?: string;
+  outputFiles?: Array<{
+    path: string;
+    name: string;
+    size: number;
+    url: string;
+    previewContent?: string;
+  }>;
 }
 
 // 用户上传的文件信息
@@ -60,6 +67,14 @@ export interface FlatMessage {
   toolName?: string;
   summarizedResult?: string; // Markdown 格式摘要
   success?: boolean;
+  // 工具输出文件
+  outputFiles?: Array<{
+    path: string;
+    name: string;
+    size: number;
+    url: string;
+    previewContent?: string;
+  }>;
   // 用户上传的文件
   files?: UploadedFileInfo[];
   // 中断标记
@@ -153,6 +168,7 @@ class MessageDAO {
     const updateData: Record<string, unknown> = {
       success: data.success,
       result: data.summarizedResult || null,
+      outputFiles: data.outputFiles ? JSON.stringify(data.outputFiles) : null,
     };
 
     return await Message.update(updateData, { where: { callId } });
@@ -188,6 +204,14 @@ class MessageDAO {
         base.toolName = msg.toolName || undefined;
         base.summarizedResult = msg.result || undefined;
         base.success = msg.success ?? undefined;
+        // 解析输出文件信息
+        if (msg.outputFiles) {
+          try {
+            base.outputFiles = JSON.parse(msg.outputFiles);
+          } catch {
+            console.error(`[MessageDAO] 解析 outputFiles 失败: ${msg.outputFiles}`);
+          }
+        }
       }
 
       // 用户消息添加文件信息
@@ -245,6 +269,14 @@ class MessageDAO {
         base.toolName = msg.toolName || undefined;
         base.summarizedResult = msg.result || undefined;
         base.success = msg.success ?? undefined;
+        // 解析输出文件信息
+        if (msg.outputFiles) {
+          try {
+            base.outputFiles = JSON.parse(msg.outputFiles);
+          } catch {
+            console.error(`[MessageDAO] 解析 outputFiles 失败: ${msg.outputFiles}`);
+          }
+        }
       }
 
       // 用户消息添加文件信息

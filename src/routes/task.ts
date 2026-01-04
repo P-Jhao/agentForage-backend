@@ -19,6 +19,7 @@ import { generateTitle } from "agentforge-gateway";
 import { filterMessagesForLLM } from "../utils/messageFilter.js";
 import { sessionFileManager } from "../service/sessionFileManager.js";
 import type { TurnEndData, TokenUsage } from "../types/turnEnd.js";
+import type { OutputFileInfo } from "../service/forgeAgentService.js";
 
 const router = new Router();
 
@@ -350,6 +351,7 @@ interface ToolCallResultData {
   success: boolean;
   summarizedResult?: string; // Markdown 格式摘要
   error?: string;
+  outputFiles?: OutputFileInfo[]; // 输出文件列表
 }
 
 /**
@@ -798,14 +800,15 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
           if (chunkType === "tool_call_result") {
             const resultData = chunk.data as ToolCallResultData;
 
-            // 更新工具调用结果（使用摘要结果）
+            // 更新工具调用结果（使用摘要结果，包含输出文件）
             await MessageDAO.updateToolCallResult(resultData.callId, {
               success: resultData.success,
               summarizedResult: resultData.summarizedResult,
               error: resultData.error,
+              outputFiles: resultData.outputFiles,
             });
 
-            // 推送 tool_call_result 给前端（使用摘要结果，不包含参数）
+            // 推送 tool_call_result 给前端（使用摘要结果，包含输出文件）
             TaskStreamService.write(uuid, {
               type: "tool_call_result",
               data: {
@@ -814,6 +817,7 @@ router.post("/:id/message", tokenAuth(), async (ctx) => {
                 success: resultData.success,
                 summarizedResult: resultData.summarizedResult,
                 error: resultData.error,
+                outputFiles: resultData.outputFiles,
               },
             });
             continue;
