@@ -42,6 +42,22 @@ class McpDAO {
   }
 
   /**
+   * 根据 ID 查询 MCP（含创建者信息）
+   * @param id MCP ID
+   */
+  static async findByIdWithCreator(id: number) {
+    return await Mcp.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "nickname"],
+        },
+      ],
+    });
+  }
+
+  /**
    * 查询所有 MCP 列表（含创建者信息）
    * @param options 查询选项
    * @param options.keyword 搜索关键词（可选）
@@ -80,10 +96,13 @@ class McpDAO {
         where.userId = userId;
         break;
       case "other":
-        // 其他：其他用户创建的公开 MCP（非内置）
+        // 其他：其他用户创建的 MCP（非内置）
         where.source = "user";
-        where.isPublic = true;
         where.userId = { [Op.ne]: userId };
+        // 普通用户只能看到公开的，管理员可以看到所有
+        if (!isAdmin) {
+          where.isPublic = true;
+        }
         break;
       // all: 不添加额外筛选
     }

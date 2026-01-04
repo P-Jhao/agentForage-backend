@@ -45,6 +45,11 @@ interface McpDetailResult {
   toolPathConfig: Record<string, Record<string, "output" | "input" | null>> | null;
   createdAt: Date;
   updatedAt: Date;
+  // 创建者信息
+  creator: {
+    id: number;
+    nickname: string | null;
+  } | null;
   associatedForges: Array<{
     id: number;
     displayName: string;
@@ -209,7 +214,7 @@ class McpService {
     userId: number,
     isAdmin: boolean = false
   ): Promise<McpDetailResult> {
-    const mcp = await McpDAO.findById(id);
+    const mcp = await McpDAO.findByIdWithCreator(id);
     if (!mcp) {
       throw Object.assign(new Error("MCP 不存在"), { status: 404 });
     }
@@ -275,6 +280,14 @@ class McpService {
       }
     }
 
+    // 提取创建者信息
+    const mcpWithUser = mcp as unknown as {
+      user?: { id: number; nickname: string | null };
+    };
+    const creator = mcpWithUser.user
+      ? { id: mcpWithUser.user.id, nickname: mcpWithUser.user.nickname }
+      : null;
+
     // 非管理员用户隐藏敏感信息（启动命令、参数、环境变量、URL、请求头）
     return {
       id: mcpData.id,
@@ -297,6 +310,7 @@ class McpService {
       toolPathConfig: isAdmin ? toolPathConfig : null,
       createdAt: mcp.createdAt,
       updatedAt: mcp.updatedAt,
+      creator,
       associatedForges,
       tools,
     };
