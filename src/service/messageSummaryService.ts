@@ -43,29 +43,45 @@ class MessageSummaryService {
   // 内存中跟踪正在总结的会话
   private summarizingTasks: Map<number, SummaryState> = new Map();
 
-  // 总结阈值：消息数量超过此值时触发总结
-  public readonly SUMMARY_THRESHOLD = 20;
+  // 总结阈值配置
+  // 主要阈值：token 数（估算值）
+  public readonly TOKEN_THRESHOLD = 8000;
+  // 兜底阈值：消息条数（防止 tokenizer 异常）
+  public readonly MESSAGE_THRESHOLD = 50;
+  // 保留最近 N 条消息不参与总结（保证最近上下文完整）
+  public readonly KEEP_RECENT_COUNT = 10;
 
   /**
-   * 获取最后一轮对话的起始索引
-   * 最后一轮定义为：最后一个 user 消息及其后续的所有 assistant 回复
-   * @param messages 消息列表
-   * @returns 最后一轮的起始索引，如果没有 user 消息则返回 0
+   * 估算消息列表的 token 数
+   * 中文约 1.5-2 字符/token，英文约 4 字符/token
+   * 这里用 content.length / 2 作为粗略估算
    */
-  getLastRoundStartIndex(messages: FlatMessage[]): number {
-    if (messages.length === 0) {
-      return 0;
-    }
+  estimateTokens(messages: FlatMessage[]): number {
+    const totalChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+    return Math.ceil(totalChars / 2);
+  }
 
-    // 从后往前查找最后一个 user 消息
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") {
-        return i;
-      }
-    }
+  /**
+   * 检查是否应该触发总结
+   * 条件：token 超限 OR 消息数超限
+   */
+  shouldTriggerSummary(messages: FlatMessage[]): boolean {
+    const tokenCount = this.estimateTokens(messages);
+    const messageCount = messages.length;
+    return tokenCount > this.TOKEN_THRESHOLD || messageCount > this.MESSAGE_THRESHOLD;
+  }
 
-    // 没有找到 user 消息，返回 0（保留所有消息）
-    return 0;
+  /**
+   * 获取需要保留的消息起始索引
+   * 保留最近 KEEP_RECENT_COUNT 条消息不参与总结
+   * @param messages 消息列表
+   * @returns 保留消息的起始索引
+   */
+  getKeepRecentStartIndex(messages: FlatMessage[]): number {
+    if (messages.length <= this.KEEP_RECENT_COUNT) {
+      return 0; // 消息数不足，全部保留
+    }
+    return messages.length - this.KEEP_RECENT_COUNT;
   }
 
   /**
@@ -98,13 +114,14 @@ class MessageSummaryService {
       return;
     }
 
-    // 计算需要总结的消息范围
-    // 保留最后一轮对话，总结之前的消息
-    const lastRoundStartIndex = this.getLastRoundStartIndex(messages);
+    // 计算需要保留的消息范围（最近 N 条）
+    const keepRecentStartIndex = this.getKeepRecentStartIndex(messages);
 
-    // 如果最后一轮就是全部消息，不需要总结
-    if (lastRoundStartIndex === 0) {
-      console.log(`[MessageSummaryService] 会话 ${conversationId} 只有一轮对话，跳过总结`);
+    // 如果保留的就是全部消息，不需要总结
+    if (keepRecentStartIndex === 0) {
+      console.log(
+        `[MessageSummaryService] 会话 ${conversationId} 消息数不足 ${this.KEEP_RECENT_COUNT} 条，跳过总结`
+      );
       return;
     }
 
@@ -112,22 +129,25 @@ class MessageSummaryService {
     const existingSummary = conversation.summary;
     const summaryUntilMessageId = conversation.summaryUntilMessageId;
 
-    // 计算需要新总结的消息（总结后的消息，不包括最后一轮）
+    // 计算需要新总结的消息（总结后的消息，不包括保留的最近 N 条）
     let newMessagesToSummarize: FlatMessage[];
     if (summaryUntilMessageId) {
-      // 已有总结：只取 summaryUntilMessageId 之后、最后一轮之前的消息
+      // 已有总结：只取 summaryUntilMessageId 之后、保留区之前的消息
       newMessagesToSummarize = messages.filter(
-        (m) => m.id > summaryUntilMessageId && messages.indexOf(m) < lastRoundStartIndex
+        (m) => m.id > summaryUntilMessageId && messages.indexOf(m) < keepRecentStartIndex
       );
     } else {
-      // 无总结：取最后一轮之前的所有消息
-      newMessagesToSummarize = messages.slice(0, lastRoundStartIndex);
+      // 无总结：取保留区之前的所有消息
+      newMessagesToSummarize = messages.slice(0, keepRecentStartIndex);
     }
 
-    // 检查新消息数量是否超过阈值
-    if (newMessagesToSummarize.length <= this.SUMMARY_THRESHOLD) {
+    // 检查是否需要触发总结（token 超限 OR 消息数超限）
+    if (!this.shouldTriggerSummary(newMessagesToSummarize)) {
+      const tokenCount = this.estimateTokens(newMessagesToSummarize);
       console.log(
-        `[MessageSummaryService] 会话 ${conversationId} 新消息数 ${newMessagesToSummarize.length} 未超过阈值 ${this.SUMMARY_THRESHOLD}，跳过`
+        `[MessageSummaryService] 会话 ${conversationId} 未达到总结阈值，` +
+          `消息数: ${newMessagesToSummarize.length}/${this.MESSAGE_THRESHOLD}，` +
+          `token 估算: ${tokenCount}/${this.TOKEN_THRESHOLD}，跳过`
       );
       return;
     }
@@ -138,8 +158,11 @@ class MessageSummaryService {
       lastTriggeredAt: new Date(),
     });
 
+    const tokenCount = this.estimateTokens(newMessagesToSummarize);
     console.log(
-      `[MessageSummaryService] 开始异步总结会话 ${conversationId}，新消息数: ${newMessagesToSummarize.length}，已有总结: ${existingSummary ? "是" : "否"}`
+      `[MessageSummaryService] 开始异步总结会话 ${conversationId}，` +
+        `新消息数: ${newMessagesToSummarize.length}，token 估算: ${tokenCount}，` +
+        `已有总结: ${existingSummary ? "是" : "否"}`
     );
 
     // 异步执行总结，不阻塞主流程

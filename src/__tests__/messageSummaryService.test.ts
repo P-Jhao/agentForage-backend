@@ -12,112 +12,161 @@ import type { ConversationSummaryInfo } from "../service/messageSummaryService.j
 
 describe("MessageSummaryService", () => {
   /**
-   * **Feature: message-history-summary, Property 2: 最后一轮对话保留完整性**
-   * 对于任意消息序列，getLastRoundStartIndex 返回的索引应指向最后一个 user 消息，
-   * 且该索引之后的所有消息都被保留
+   * **Feature: message-history-summary, Property 2: 保留最近消息完整性**
+   * 对于任意消息序列，getKeepRecentStartIndex 返回的索引应保证最近 N 条消息被保留
    * 验证: 需求 1.2
    */
-  describe("getLastRoundStartIndex - Property 2: 最后一轮对话保留完整性", () => {
+  describe("getKeepRecentStartIndex - Property 2: 保留最近消息完整性", () => {
     it("空消息列表应返回 0", () => {
-      const result = MessageSummaryService.getLastRoundStartIndex([]);
+      const result = MessageSummaryService.getKeepRecentStartIndex([]);
       expect(result).toBe(0);
     });
 
-    it("返回的索引应指向最后一个 user 消息", () => {
+    it("消息数不足 KEEP_RECENT_COUNT 时应返回 0（全部保留）", () => {
       fc.assert(
         fc.property(
-          fc.array(
-            fc.record({
-              id: fc.integer({ min: 1, max: 1000 }),
-              role: fc.constantFrom("user", "assistant") as fc.Arbitrary<"user" | "assistant">,
-              type: fc.constant("chat" as const),
-              content: fc.string({ minLength: 1 }),
-              createdAt: fc.date(),
-            }),
-            { minLength: 1, maxLength: 50 }
-          ),
-          (messages) => {
-            const index = MessageSummaryService.getLastRoundStartIndex(messages);
-
-            // 找到最后一个 user 消息的索引
-            let lastUserIndex = -1;
-            for (let i = messages.length - 1; i >= 0; i--) {
-              if (messages[i].role === "user") {
-                lastUserIndex = i;
-                break;
-              }
-            }
-
-            if (lastUserIndex === -1) {
-              // 没有 user 消息，应返回 0
-              expect(index).toBe(0);
-            } else {
-              // 应返回最后一个 user 消息的索引
-              expect(index).toBe(lastUserIndex);
-              expect(messages[index].role).toBe("user");
-            }
+          fc.integer({ min: 1, max: MessageSummaryService.KEEP_RECENT_COUNT }),
+          (count) => {
+            const messages: FlatMessage[] = Array.from({ length: count }, (_, i) => ({
+              id: i + 1,
+              role: i % 2 === 0 ? "user" : "assistant",
+              type: "chat" as const,
+              content: `消息${i + 1}`,
+              createdAt: new Date(),
+            }));
+            const result = MessageSummaryService.getKeepRecentStartIndex(messages);
+            expect(result).toBe(0);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 50 }
       );
     });
 
-    it("索引之后不应有其他 user 消息", () => {
+    it("消息数超过 KEEP_RECENT_COUNT 时应返回正确的起始索引", () => {
       fc.assert(
         fc.property(
-          fc.array(
-            fc.record({
-              id: fc.integer({ min: 1, max: 1000 }),
-              role: fc.constantFrom("user", "assistant") as fc.Arbitrary<"user" | "assistant">,
-              type: fc.constant("chat" as const),
-              content: fc.string({ minLength: 1 }),
-              createdAt: fc.date(),
-            }),
-            { minLength: 1, maxLength: 50 }
-          ),
-          (messages) => {
-            const index = MessageSummaryService.getLastRoundStartIndex(messages);
-
-            // 索引之后的消息不应包含 user 消息
-            const messagesAfterIndex = messages.slice(index + 1);
-            const hasUserAfter = messagesAfterIndex.some((m) => m.role === "user");
-            expect(hasUserAfter).toBe(false);
+          fc.integer({ min: MessageSummaryService.KEEP_RECENT_COUNT + 1, max: 100 }),
+          (count) => {
+            const messages: FlatMessage[] = Array.from({ length: count }, (_, i) => ({
+              id: i + 1,
+              role: i % 2 === 0 ? "user" : "assistant",
+              type: "chat" as const,
+              content: `消息${i + 1}`,
+              createdAt: new Date(),
+            }));
+            const result = MessageSummaryService.getKeepRecentStartIndex(messages);
+            // 应该保留最后 KEEP_RECENT_COUNT 条
+            expect(result).toBe(count - MessageSummaryService.KEEP_RECENT_COUNT);
+            // 保留的消息数应该等于 KEEP_RECENT_COUNT
+            expect(messages.length - result).toBe(MessageSummaryService.KEEP_RECENT_COUNT);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 50 }
       );
     });
   });
 
   /**
    * **Feature: message-history-summary, Property 1: 总结触发阈值正确性**
-   * 对于任意会话和消息数量，当且仅当消息数量超过 20 条时，系统应触发总结任务
+   * 对于任意消息列表，当 token 超限 OR 消息数超限时应触发总结
    * 验证: 需求 1.1
    */
-  describe("SUMMARY_THRESHOLD - Property 1: 总结触发阈值正确性", () => {
-    it("阈值应为 20", () => {
-      expect(MessageSummaryService.SUMMARY_THRESHOLD).toBe(20);
+  describe("shouldTriggerSummary - Property 1: 总结触发阈值正确性", () => {
+    it("阈值配置应正确", () => {
+      expect(MessageSummaryService.TOKEN_THRESHOLD).toBe(8000);
+      expect(MessageSummaryService.MESSAGE_THRESHOLD).toBe(50);
+      expect(MessageSummaryService.KEEP_RECENT_COUNT).toBe(10);
     });
 
-    it("消息数量 <= 20 时不应触发总结", () => {
+    it("空消息列表不应触发总结", () => {
+      const result = MessageSummaryService.shouldTriggerSummary([]);
+      expect(result).toBe(false);
+    });
+
+    it("消息数超过阈值时应触发总结", () => {
       fc.assert(
-        fc.property(fc.integer({ min: 1, max: 20 }), (count) => {
-          // 阈值检查逻辑：count <= SUMMARY_THRESHOLD 时不触发
-          const shouldTrigger = count > MessageSummaryService.SUMMARY_THRESHOLD;
-          expect(shouldTrigger).toBe(false);
-        }),
-        { numRuns: 100 }
+        fc.property(
+          fc.integer({ min: MessageSummaryService.MESSAGE_THRESHOLD + 1, max: 100 }),
+          (count) => {
+            // 创建短消息，确保 token 不超限，只靠消息数触发
+            const messages: FlatMessage[] = Array.from({ length: count }, (_, i) => ({
+              id: i + 1,
+              role: "user" as const,
+              type: "chat" as const,
+              content: "短", // 很短的内容
+              createdAt: new Date(),
+            }));
+            const result = MessageSummaryService.shouldTriggerSummary(messages);
+            expect(result).toBe(true);
+          }
+        ),
+        { numRuns: 50 }
       );
     });
 
-    it("消息数量 > 20 时应触发总结", () => {
+    it("token 超过阈值时应触发总结（即使消息数少）", () => {
+      // 创建少量但很长的消息，使 token 超限
+      const longContent = "这是一段很长的内容".repeat(2000); // 约 18000 字符 = 9000 token
+      const messages: FlatMessage[] = [
+        { id: 1, role: "user", type: "chat", content: longContent, createdAt: new Date() },
+      ];
+      const result = MessageSummaryService.shouldTriggerSummary(messages);
+      expect(result).toBe(true);
+    });
+
+    it("消息数和 token 都未超限时不应触发总结", () => {
       fc.assert(
-        fc.property(fc.integer({ min: 21, max: 100 }), (count) => {
-          // 阈值检查逻辑：count > SUMMARY_THRESHOLD 时触发
-          const shouldTrigger = count > MessageSummaryService.SUMMARY_THRESHOLD;
-          expect(shouldTrigger).toBe(true);
-        }),
-        { numRuns: 100 }
+        fc.property(
+          fc.integer({ min: 1, max: MessageSummaryService.MESSAGE_THRESHOLD }),
+          (count) => {
+            // 创建短消息，确保 token 和消息数都不超限
+            const messages: FlatMessage[] = Array.from({ length: count }, (_, i) => ({
+              id: i + 1,
+              role: "user" as const,
+              type: "chat" as const,
+              content: "短消息", // 6 字符 = 3 token
+              createdAt: new Date(),
+            }));
+            // 50 条 * 3 token = 150 token，远低于 8000
+            const result = MessageSummaryService.shouldTriggerSummary(messages);
+            expect(result).toBe(false);
+          }
+        ),
+        { numRuns: 50 }
+      );
+    });
+  });
+
+  /**
+   * **Feature: message-history-summary, Property 6: Token 估算正确性**
+   */
+  describe("estimateTokens - Property 6: Token 估算正确性", () => {
+    it("空消息列表应返回 0", () => {
+      const result = MessageSummaryService.estimateTokens([]);
+      expect(result).toBe(0);
+    });
+
+    it("token 估算应约为字符数的一半", () => {
+      fc.assert(
+        fc.property(
+          fc.array(
+            fc.record({
+              id: fc.integer({ min: 1, max: 1000 }),
+              role: fc.constantFrom("user", "assistant") as fc.Arbitrary<"user" | "assistant">,
+              type: fc.constant("chat" as const),
+              content: fc.string({ minLength: 1, maxLength: 100 }),
+              createdAt: fc.date(),
+            }),
+            { minLength: 1, maxLength: 20 }
+          ),
+          (messages) => {
+            const totalChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+            const expectedTokens = Math.ceil(totalChars / 2);
+            const result = MessageSummaryService.estimateTokens(messages);
+            expect(result).toBe(expectedTokens);
+          }
+        ),
+        { numRuns: 50 }
       );
     });
   });
