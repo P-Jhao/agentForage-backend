@@ -1107,6 +1107,95 @@ router.delete("/mcp/:id", async (ctx) => {
   ctx.body = { code: 200, message: "ok" };
 });
 
+// MCP 公开审核列表请求参数
+interface AdminMcpApprovalListQuery {
+  page?: string;
+  pageSize?: string;
+  status?: "pending" | "approved" | "rejected";
+}
+
+/**
+ * 获取 MCP 公开审核列表（管理员/运营员）
+ * GET /api/admin/mcp/approval/list
+ */
+router.get("/mcp/approval/list", async (ctx) => {
+  const user = ctx.state.user;
+  const {
+    page = "1",
+    pageSize = "10",
+    status = "pending",
+  } = ctx.query as AdminMcpApprovalListQuery;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+
+  try {
+    const result = await McpService.getPendingPublicRequests(
+      {
+        page: pageNum,
+        pageSize: pageSizeNum,
+        status: status as "pending" | "approved" | "rejected",
+      },
+      user
+    );
+
+    // 定义关联数据类型
+    type McpWithUser = {
+      id: number;
+      name: string;
+      description: string | null;
+      transportType: string;
+      url: string | null;
+      source: string;
+      status: string;
+      publicApprovalStatus: string;
+      publicApprovalNote: string | null;
+      publicApprovalAt: Date | null;
+      publicApprovalBy: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+      user: { id: number; username: string; nickname: string | null };
+    };
+
+    // 格式化响应数据
+    const mcpList = result.mcps.map((mcp) => {
+      const m = mcp as unknown as McpWithUser;
+      return {
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        transportType: m.transportType,
+        url: m.url,
+        source: m.source,
+        status: m.status,
+        publicApprovalStatus: m.publicApprovalStatus,
+        publicApprovalNote: m.publicApprovalNote,
+        publicApprovalAt: m.publicApprovalAt?.toISOString() || null,
+        creator: {
+          id: m.user.id,
+          username: m.user.username,
+          nickname: m.user.nickname,
+        },
+        createdAt: m.createdAt.toISOString(),
+        updatedAt: m.updatedAt.toISOString(),
+      };
+    });
+
+    ctx.body = {
+      code: 200,
+      message: "ok",
+      data: {
+        mcps: mcpList,
+        pagination: result.pagination,
+      },
+    };
+  } catch (error) {
+    const err = error as Error & { status?: number };
+    ctx.status = err.status || 500;
+    ctx.body = { code: err.status || 500, message: err.message };
+  }
+});
+
 // ==================== 数据统计 ====================
 
 // 统计查询参数

@@ -3,7 +3,12 @@
  */
 import { Op } from "sequelize";
 import { Mcp, User } from "./models/index.js";
-import type { McpStatus, McpCreationAttributes, McpSource } from "./models/Mcp.js";
+import type {
+  McpStatus,
+  McpCreationAttributes,
+  McpSource,
+  McpPublicApprovalStatus,
+} from "./models/Mcp.js";
 
 // 创建 MCP 的参数类型（不含 source 和 status，由系统自动设置）
 export type CreateMcpData = Omit<McpCreationAttributes, "source" | "status">;
@@ -160,6 +165,45 @@ class McpDAO {
       where: { status },
       order: [["createdAt", "ASC"]],
     });
+  }
+
+  /**
+   * 根据公开审核状态查询 MCP 列表（含创建者信息）
+   * @param options 查询选项
+   * @param options.page 页码（默认 1）
+   * @param options.pageSize 每页数量（默认 10）
+   * @param options.status 审核状态筛选（可选，默认查询 pending）
+   */
+  static async findByApprovalStatus(options: {
+    page?: number;
+    pageSize?: number;
+    status?: McpPublicApprovalStatus;
+  }) {
+    const { page = 1, pageSize = 10, status = "pending" } = options;
+    const offset = (page - 1) * pageSize;
+
+    const { count, rows } = await Mcp.findAndCountAll({
+      where: { publicApprovalStatus: status },
+      order: [["updatedAt", "DESC"]],
+      limit: pageSize,
+      offset,
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "username", "nickname"],
+        },
+      ],
+    });
+
+    return {
+      mcps: rows,
+      pagination: {
+        total: count,
+        page,
+        pageSize,
+      },
+    };
   }
 }
 

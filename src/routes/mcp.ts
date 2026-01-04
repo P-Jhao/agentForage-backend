@@ -483,4 +483,60 @@ router.put("/:id/tool-path-config", tokenAuth(), async (ctx) => {
   }
 });
 
+/**
+ * 申请公开 MCP（普通用户）
+ * POST /api/mcp/:id/request-public
+ */
+router.post("/:id/request-public", tokenAuth(), async (ctx) => {
+  const id = Number(ctx.params.id);
+  const user = ctx.state.user as JwtPayload;
+
+  if (isNaN(id)) {
+    ctx.body = { code: 400, message: "无效的 MCP ID", data: null };
+    return;
+  }
+
+  try {
+    const result = await McpService.requestPublic(id, user);
+    ctx.body = { code: 200, message: "申请已提交，请等待管理员审核", data: result };
+  } catch (error) {
+    const err = error as Error & { status?: number };
+    ctx.status = err.status || 500;
+    ctx.body = { code: err.status || 500, message: err.message, data: null };
+  }
+});
+
+/**
+ * 审核公开申请（仅管理员/运营员）
+ * POST /api/mcp/:id/review-public
+ */
+router.post("/:id/review-public", tokenAuth(), async (ctx) => {
+  const id = Number(ctx.params.id);
+  const user = ctx.state.user as JwtPayload;
+  const { action, note } = ctx.request.body as {
+    action: "approve" | "reject";
+    note?: string;
+  };
+
+  if (isNaN(id)) {
+    ctx.body = { code: 400, message: "无效的 MCP ID", data: null };
+    return;
+  }
+
+  if (!action || !["approve", "reject"].includes(action)) {
+    ctx.body = { code: 400, message: "action 必须为 approve 或 reject", data: null };
+    return;
+  }
+
+  try {
+    const result = await McpService.reviewPublicRequest(id, action, note || null, user);
+    const message = action === "approve" ? "已批准公开" : "已拒绝公开";
+    ctx.body = { code: 200, message, data: result };
+  } catch (error) {
+    const err = error as Error & { status?: number };
+    ctx.status = err.status || 500;
+    ctx.body = { code: err.status || 500, message: err.message, data: null };
+  }
+});
+
 export default router;

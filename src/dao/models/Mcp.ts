@@ -17,6 +17,14 @@ export type McpSource = "builtin" | "user";
 // closed: 管理员主动关闭（普通用户不可见）
 export type McpStatus = "connected" | "disconnected" | "closed";
 
+// MCP 公开审核状态
+// none: 未申请公开
+// pending: 待审核
+// approved: 已通过
+// rejected: 已拒绝
+// cancelled: 用户已取消
+export type McpPublicApprovalStatus = "none" | "pending" | "approved" | "rejected" | "cancelled";
+
 // 工具路径配置类型
 // 格式: { "toolName": { "paramName": "output" | "input" | null } }
 export type ToolPathConfig = Record<string, Record<string, "output" | "input" | null>>;
@@ -42,6 +50,11 @@ export interface McpAttributes {
   example: string | null; // MCP 示例（可选）
   status: McpStatus; // 连接状态
   toolPathConfig: string | null; // 工具路径配置（JSON 字符串，标记哪些参数是输入/输出路径）
+  // 公开审核相关字段
+  publicApprovalStatus: McpPublicApprovalStatus; // 公开审核状态
+  publicApprovalNote: string | null; // 审核备注（拒绝原因等）
+  publicApprovalAt: Date | null; // 审核时间
+  publicApprovalBy: number | null; // 审核人 ID
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -63,6 +76,10 @@ export type McpCreationAttributes = Optional<
   | "remarks"
   | "example"
   | "toolPathConfig"
+  | "publicApprovalStatus"
+  | "publicApprovalNote"
+  | "publicApprovalAt"
+  | "publicApprovalBy"
 >;
 
 class Mcp extends Model<McpAttributes, McpCreationAttributes> implements McpAttributes {
@@ -83,6 +100,10 @@ class Mcp extends Model<McpAttributes, McpCreationAttributes> implements McpAttr
   declare example: string | null;
   declare status: McpStatus;
   declare toolPathConfig: string | null;
+  declare publicApprovalStatus: McpPublicApprovalStatus;
+  declare publicApprovalNote: string | null;
+  declare publicApprovalAt: Date | null;
+  declare publicApprovalBy: number | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -177,6 +198,28 @@ Mcp.init(
       type: DataTypes.TEXT,
       allowNull: true,
       comment: "工具路径配置（JSON 字符串，标记哪些参数是输入/输出路径）",
+    },
+    publicApprovalStatus: {
+      type: DataTypes.ENUM("none", "pending", "approved", "rejected", "cancelled"),
+      allowNull: false,
+      defaultValue: "none",
+      comment:
+        "公开审核状态：none（未申请）/ pending（待审核）/ approved（已通过）/ rejected（已拒绝）/ cancelled（用户已取消）",
+    },
+    publicApprovalNote: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "审核备注（拒绝原因等）",
+    },
+    publicApprovalAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "审核时间",
+    },
+    publicApprovalBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "审核人 ID",
     },
   },
   {
