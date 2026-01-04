@@ -17,6 +17,10 @@ export type McpSource = "builtin" | "user";
 // closed: 管理员主动关闭（普通用户不可见）
 export type McpStatus = "connected" | "disconnected" | "closed";
 
+// 工具路径配置类型
+// 格式: { "toolName": { "paramName": "output" | "input" | null } }
+export type ToolPathConfig = Record<string, Record<string, "output" | "input" | null>>;
+
 // MCP 属性接口
 export interface McpAttributes {
   id: number;
@@ -37,6 +41,7 @@ export interface McpAttributes {
   remarks: string | null; // 备注（可选）
   example: string | null; // MCP 示例（可选）
   status: McpStatus; // 连接状态
+  toolPathConfig: string | null; // 工具路径配置（JSON 字符串，标记哪些参数是输入/输出路径）
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -57,6 +62,7 @@ export type McpCreationAttributes = Optional<
   | "headers"
   | "remarks"
   | "example"
+  | "toolPathConfig"
 >;
 
 class Mcp extends Model<McpAttributes, McpCreationAttributes> implements McpAttributes {
@@ -76,6 +82,7 @@ class Mcp extends Model<McpAttributes, McpCreationAttributes> implements McpAttr
   declare remarks: string | null;
   declare example: string | null;
   declare status: McpStatus;
+  declare toolPathConfig: string | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 }
@@ -165,6 +172,11 @@ Mcp.init(
       allowNull: false,
       defaultValue: "disconnected",
       comment: "连接状态：connected（连通成功）/ disconnected（连通失败）/ closed（管理员关闭）",
+    },
+    toolPathConfig: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "工具路径配置（JSON 字符串，标记哪些参数是输入/输出路径）",
     },
   },
   {

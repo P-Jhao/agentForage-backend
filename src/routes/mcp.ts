@@ -427,4 +427,60 @@ router.delete("/:id", tokenAuth(), async (ctx) => {
   }
 });
 
+/**
+ * 更新 MCP 工具路径配置（仅管理员）
+ * PUT /api/mcp/:id/tool-path-config
+ */
+router.put("/:id/tool-path-config", tokenAuth(), async (ctx) => {
+  const id = Number(ctx.params.id);
+  const user = ctx.state.user as JwtPayload;
+  const { toolPathConfig } = ctx.request.body as {
+    toolPathConfig: Record<string, Record<string, "output" | "input" | null>> | null;
+  };
+
+  if (isNaN(id)) {
+    ctx.body = { code: 400, message: "无效的 MCP ID", data: null };
+    return;
+  }
+
+  // 验证 toolPathConfig 格式
+  if (toolPathConfig !== null && typeof toolPathConfig !== "object") {
+    ctx.body = { code: 400, message: "toolPathConfig 格式无效", data: null };
+    return;
+  }
+
+  // 验证配置内容
+  if (toolPathConfig) {
+    for (const [toolName, params] of Object.entries(toolPathConfig)) {
+      if (typeof params !== "object" || params === null) {
+        ctx.body = {
+          code: 400,
+          message: `工具 ${toolName} 的配置格式无效`,
+          data: null,
+        };
+        return;
+      }
+      for (const [paramName, pathType] of Object.entries(params)) {
+        if (pathType !== null && pathType !== "output" && pathType !== "input") {
+          ctx.body = {
+            code: 400,
+            message: `工具 ${toolName} 的参数 ${paramName} 的路径类型无效，只能是 output、input 或 null`,
+            data: null,
+          };
+          return;
+        }
+      }
+    }
+  }
+
+  try {
+    const result = await McpService.updateToolPathConfig(id, toolPathConfig, user);
+    ctx.body = { code: 200, message: "更新成功", data: result };
+  } catch (error) {
+    const err = error as Error & { status?: number };
+    ctx.status = err.status || 500;
+    ctx.body = { code: err.status || 500, message: err.message, data: null };
+  }
+});
+
 export default router;

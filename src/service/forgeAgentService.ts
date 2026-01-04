@@ -4,14 +4,19 @@
  */
 import McpForgeDAO from "../dao/mcpForgeDAO.js";
 import ForgeDAO from "../dao/forgeDAO.js";
+import McpDAO from "../dao/mcpDAO.js";
 import { mcpManager } from "../mcp/index.js";
 import type { MCPToolCallResult } from "../mcp/types.js";
 import type { CustomModelConfig } from "agentforge-gateway";
+import { processToolArgs, type ToolPathConfig } from "../utils/toolPathHandler.js";
 
 // 动态导入 gateway
 const loadGateway = async () => {
   return await import("agentforge-gateway");
 };
+
+// MCP 路径配置缓存（mcpId -> toolPathConfig）
+const mcpPathConfigCache = new Map<number, ToolPathConfig | null>();
 
 /**
  * 消息格式
@@ -60,12 +65,12 @@ export type { CustomModelConfig };
 /**
  * 将 MCP 工具调用结果转换为字符串
  */
-function formatToolResult(result: MCPToolCallResult): string {
+function formatToolResult(result: MCPToolCallResult, outputFiles?: string[]): string {
   if (result.isError) {
     return `工具执行错误: ${result.content.map((c) => c.text || "").join("\n")}`;
   }
 
-  return result.content
+  let resultText = result.content
     .map((c) => {
       if (c.type === "text") return c.text || "";
       if (c.type === "image") return `[图片: ${c.mimeType}]`;
@@ -73,11 +78,56 @@ function formatToolResult(result: MCPToolCallResult): string {
       return "";
     })
     .join("\n");
+
+  // 如果有输出文件，附加文件路径信息
+  if (outputFiles && outputFiles.length > 0) {
+    resultText += `\n\n[输出文件已保存到服务器: ${outputFiles.join(", ")}]`;
+  }
+
+  return resultText;
+}
+
+/**
+ * 获取 MCP 的路径配置（带缓存）
+ */
+async function getMcpPathConfig(mcpId: number): Promise<ToolPathConfig | null> {
+  // 检查缓存
+  if (mcpPathConfigCache.has(mcpId)) {
+    return mcpPathConfigCache.get(mcpId) || null;
+  }
+
+  // 从数据库获取
+  const mcp = await McpDAO.findById(mcpId);
+  let config: ToolPathConfig | null = null;
+
+  if (mcp?.toolPathConfig) {
+    try {
+      config = JSON.parse(mcp.toolPathConfig) as ToolPathConfig;
+    } catch (e) {
+      console.error(`[ForgeAgentService] 解析 MCP ${mcpId} 的 toolPathConfig 失败:`, e);
+    }
+  }
+
+  // 存入缓存
+  mcpPathConfigCache.set(mcpId, config);
+  return config;
+}
+
+/**
+ * 清除 MCP 路径配置缓存
+ */
+export function clearMcpPathConfigCache(mcpId?: number): void {
+  if (mcpId !== undefined) {
+    mcpPathConfigCache.delete(mcpId);
+  } else {
+    mcpPathConfigCache.clear();
+  }
 }
 
 /**
  * 工具执行器
  * 通过 mcpManager 调用 MCP Server 执行工具
+ * 自动处理输出路径参数
  */
 async function toolExecutor(
   mcpId: number,
@@ -88,8 +138,19 @@ async function toolExecutor(
     `[ForgeAgentService] 执行工具: ${toolName}, mcpId: ${mcpId}, 参数: ${JSON.stringify(args)}`
   );
 
-  const result = await mcpManager.callTool(mcpId, toolName, args);
-  const formattedResult = formatToolResult(result);
+  // 获取 MCP 的路径配置
+  const pathConfig = await getMcpPathConfig(mcpId);
+
+  // 处理路径参数
+  const { processedArgs, outputFiles } = await processToolArgs(mcpId, toolName, args, pathConfig);
+
+  // 如果参数被修改，打印日志
+  if (outputFiles.length > 0) {
+    console.log(`[ForgeAgentService] 处理后的参数: ${JSON.stringify(processedArgs)}`);
+  }
+
+  const result = await mcpManager.callTool(mcpId, toolName, processedArgs);
+  const formattedResult = formatToolResult(result, outputFiles);
   console.log(`[ForgeAgentService] 工具返回原始结果:`, JSON.stringify(result));
   return formattedResult;
 }

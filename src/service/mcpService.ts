@@ -8,6 +8,7 @@ import type { JwtPayload } from "../middleware/tokenAuth.js";
 import type { CreateMcpData, UpdateMcpData, McpFilterType } from "../dao/mcpDAO.js";
 import type { McpStatus } from "../dao/models/Mcp.js";
 import { mcpManager, type MCPTool } from "../mcp/index.js";
+import { clearMcpPathConfigCache } from "./forgeAgentService.js";
 
 // 动态导入 ForgeService（避免循环依赖）
 const loadForgeService = async () => {
@@ -41,6 +42,7 @@ interface McpDetailResult {
   remarks: string | null;
   example: string | null;
   status: string;
+  toolPathConfig: Record<string, Record<string, "output" | "input" | null>> | null;
   createdAt: Date;
   updatedAt: Date;
   associatedForges: Array<{
@@ -240,6 +242,16 @@ class McpService {
 
     const mcpData = mcp.toJSON();
 
+    // 解析 toolPathConfig
+    let toolPathConfig: Record<string, Record<string, "output" | "input" | null>> | null = null;
+    if (mcpData.toolPathConfig) {
+      try {
+        toolPathConfig = JSON.parse(mcpData.toolPathConfig);
+      } catch {
+        console.error(`解析 MCP ${id} 的 toolPathConfig 失败`);
+      }
+    }
+
     // 非管理员用户隐藏敏感信息（启动命令、参数、环境变量、URL、请求头）
     return {
       id: mcpData.id,
@@ -259,6 +271,7 @@ class McpService {
       remarks: mcpData.remarks,
       example: mcpData.example,
       status: mcpData.status,
+      toolPathConfig: isAdmin ? toolPathConfig : null,
       createdAt: mcp.createdAt,
       updatedAt: mcp.updatedAt,
       associatedForges,
@@ -408,6 +421,36 @@ class McpService {
       valid: invalidMcps.length === 0,
       invalidMcps,
     };
+  }
+
+  /**
+   * 更新 MCP 工具路径配置（仅管理员）
+   * @param id MCP ID
+   * @param toolPathConfig 工具路径配置
+   * @param user 当前用户
+   */
+  static async updateToolPathConfig(
+    id: number,
+    toolPathConfig: Record<string, Record<string, "output" | "input" | null>> | null,
+    user: JwtPayload
+  ) {
+    // 权限检查
+    this.checkAdminPermission(user);
+
+    // 检查 MCP 是否存在
+    const mcp = await McpDAO.findById(id);
+    if (!mcp) {
+      throw Object.assign(new Error("MCP 不存在"), { status: 404 });
+    }
+
+    // 更新配置
+    const configStr = toolPathConfig ? JSON.stringify(toolPathConfig) : null;
+    await McpDAO.update(id, { toolPathConfig: configStr });
+
+    // 清除缓存
+    clearMcpPathConfigCache(id);
+
+    return { success: true };
   }
 }
 
